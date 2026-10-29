@@ -1,0 +1,1671 @@
+{
+  "source": {
+    "file": "work\\dt\\vendor_boot\\vendor.dtb",
+    "bytes": 3171955
+  },
+  "soc": {
+    "model": "Qualcomm Technologies, Inc. Cliffs SoC",
+    "compatible": [
+      "qcom,cliffs"
+    ],
+    "msm_id": [
+      "0x266",
+      "0x10000"
+    ],
+    "board_id": [
+      "0x0",
+      "0x0"
+    ]
+  },
+  "peripherals": {
+    "gic": [
+      {
+        "node": "interrupt-controller@17100000",
+        "path": "/soc/interrupt-controller@17100000",
+        "compatible": [
+          "arm,gic-v3"
+        ],
+        "regions": [
+          {
+            "base": 386924544,
+            "size": 65536
+          },
+          {
+            "base": 387448832,
+            "size": 2097152
+          }
+        ],
+        "interrupt": {
+          "kind": "PPI",
+          "spi": 9,
+          "flags": 4,
+          "gsiv": 25
+        },
+        "status": null
+      },
+      {
+        "node": "msi-controller@17140000",
+        "path": "/soc/interrupt-controller@17100000/msi-controller@17140000",
+        "compatible": [
+          "arm,gic-v3-its"
+        ],
+        "regions": [
+          {
+            "base": 387186688,
+            "size": 131072
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "generic_timer": [
+      {
+        "node": "timer",
+        "path": "/soc/timer",
+        "compatible": [
+          "arm,armv8-timer"
+        ],
+        "regions": [],
+        "interrupt": {
+          "kind": "PPI",
+          "spi": 13,
+          "flags": 65288,
+          "gsiv": 29
+        },
+        "status": null
+      }
+    ],
+    "timer_frame": [
+      {
+        "node": "timer@17420000",
+        "path": "/soc/timer@17420000",
+        "compatible": [
+          "arm,armv7-timer-mem"
+        ],
+        "regions": [
+          {
+            "base": 390201344,
+            "size": 4096
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "ufs": [
+      {
+        "node": "ufshc@1d84000",
+        "path": "/soc/ufshc@1d84000",
+        "compatible": [
+          "qcom,ufshc"
+        ],
+        "regions": [
+          {
+            "base": 30949376,
+            "size": 12288
+          },
+          {
+            "base": 30965760,
+            "size": 32768
+          },
+          {
+            "base": 30998528,
+            "size": 36864
+          },
+          {
+            "base": 31084544,
+            "size": 8192
+          },
+          {
+            "base": 31080448,
+            "size": 16
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 265,
+          "flags": 4,
+          "gsiv": 297
+        },
+        "status": "disabled"
+      }
+    ],
+    "usb_dwc3": [
+      {
+        "node": "ssusb@a600000",
+        "path": "/soc/ssusb@a600000",
+        "compatible": [
+          "qcom,dwc-usb3-msm"
+        ],
+        "regions": [
+          {
+            "base": 174063616,
+            "size": 1048576
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "dwc3@a600000",
+        "path": "/soc/ssusb@a600000/dwc3@a600000",
+        "compatible": [
+          "snps,dwc3"
+        ],
+        "regions": [
+          {
+            "base": 174063616,
+            "size": 55612
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 133,
+          "flags": 4,
+          "gsiv": 165
+        },
+        "status": null
+      }
+    ],
+    "pinctrl": [
+      {
+        "node": "pinctrl@f000000",
+        "path": "/soc/pinctrl@f000000",
+        "compatible": [
+          "qcom,cliffs-pinctrl"
+        ],
+        "regions": [
+          {
+            "base": 251658240,
+            "size": 16777216
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 208,
+          "flags": 4,
+          "gsiv": 240
+        },
+        "status": null
+      },
+      {
+        "node": "tlmm-vm-mem-access",
+        "path": "/soc/tlmm-vm-mem-access",
+        "compatible": [
+          "qcom,tlmm-vm-mem-access"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "tlmm-vm-test",
+        "path": "/soc/tlmm-vm-test",
+        "compatible": [
+          "qcom,tlmm-vm-test"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "lpi_pinctrl@6E80000",
+        "path": "/soc/spf_core_platform/lpi_pinctrl@6E80000",
+        "compatible": [
+          "qcom,lpi-pinctrl"
+        ],
+        "regions": [
+          {
+            "base": 115867648,
+            "size": 0
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "spmi": [
+      {
+        "node": "qcom,spmi@c42d000",
+        "path": "/soc/qcom,spmi@c42d000",
+        "compatible": [
+          "qcom,spmi-pmic-arb"
+        ],
+        "regions": [
+          {
+            "base": 205705216,
+            "size": 16384
+          },
+          {
+            "base": 205520896,
+            "size": 12288
+          },
+          {
+            "base": 206569472,
+            "size": 4194304
+          },
+          {
+            "base": 205783040,
+            "size": 524288
+          },
+          {
+            "base": 206307328,
+            "size": 65536
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,spmi@c432000",
+        "path": "/soc/qcom,spmi@c432000",
+        "compatible": [
+          "qcom,spmi-pmic-arb"
+        ],
+        "regions": [
+          {
+            "base": 205725696,
+            "size": 16384
+          },
+          {
+            "base": 205520896,
+            "size": 12288
+          },
+          {
+            "base": 206569472,
+            "size": 4194304
+          },
+          {
+            "base": 205783040,
+            "size": 524288
+          },
+          {
+            "base": 206372864,
+            "size": 65536
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,spmi-debug@10b14000",
+        "path": "/soc/qcom,spmi-debug@10b14000",
+        "compatible": [
+          "qcom,spmi-pmic-arb-debug"
+        ],
+        "regions": [
+          {
+            "base": 280051712,
+            "size": 96
+          },
+          {
+            "base": 572295044,
+            "size": 4
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "debug_uart": [
+      {
+        "node": "qcom,qup_uart@a94000",
+        "path": "/soc/qcom,qupv3_0_geni_se@ac0000/qcom,qup_uart@a94000",
+        "compatible": [
+          "qcom,geni-debug-uart"
+        ],
+        "regions": [
+          {
+            "base": 11091968,
+            "size": 16384
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 358,
+          "flags": 4,
+          "gsiv": 390
+        },
+        "status": "ok"
+      },
+      {
+        "node": "qcom,qup_uart@888000",
+        "path": "/soc/qcom,qupv3_1_geni_se@8c0000/qcom,qup_uart@888000",
+        "compatible": [
+          "qcom,msm-geni-serial-hs"
+        ],
+        "regions": [
+          {
+            "base": 8945664,
+            "size": 16384
+          }
+        ],
+        "interrupt": null,
+        "status": "disabled"
+      }
+    ],
+    "geni_se": [
+      {
+        "node": "qcom,qupv3_0_geni_se@ac0000",
+        "path": "/soc/qcom,qupv3_0_geni_se@ac0000",
+        "compatible": [
+          "qcom,geni-se-qup"
+        ],
+        "regions": [
+          {
+            "base": 11272192,
+            "size": 8192
+          }
+        ],
+        "interrupt": null,
+        "status": "ok"
+      },
+      {
+        "node": "qcom,qupv3_1_geni_se@8c0000",
+        "path": "/soc/qcom,qupv3_1_geni_se@8c0000",
+        "compatible": [
+          "qcom,geni-se-qup"
+        ],
+        "regions": [
+          {
+            "base": 9175040,
+            "size": 8192
+          }
+        ],
+        "interrupt": null,
+        "status": "ok"
+      }
+    ],
+    "display_mdp": [
+      {
+        "node": "qcom,mdss_mdp@ae00000",
+        "path": "/soc/qcom,mdss_mdp@ae00000",
+        "compatible": [
+          "qcom,sde-kms"
+        ],
+        "regions": [
+          {
+            "base": 182452224,
+            "size": 540672
+          },
+          {
+            "base": 183173120,
+            "size": 8200
+          },
+          {
+            "base": 184025088,
+            "size": 28672
+          },
+          {
+            "base": 4194304,
+            "size": 8192
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 83,
+          "flags": 4,
+          "gsiv": 115
+        },
+        "status": null
+      }
+    ],
+    "dsi": [
+      {
+        "node": "qcom,mdss_dsi_ctrl0@ae94000",
+        "path": "/soc/qcom,mdss_dsi_ctrl0@ae94000",
+        "compatible": [
+          "qcom,dsi-ctrl-hw-v2.8"
+        ],
+        "regions": [
+          {
+            "base": 183058432,
+            "size": 4096
+          },
+          {
+            "base": 183562240,
+            "size": 4
+          },
+          {
+            "base": 182673408,
+            "size": 768
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,mdss_dsi_ctrl1@ae96000",
+        "path": "/soc/qcom,mdss_dsi_ctrl1@ae96000",
+        "compatible": [
+          "qcom,dsi-ctrl-hw-v2.8"
+        ],
+        "regions": [
+          {
+            "base": 183066624,
+            "size": 4096
+          },
+          {
+            "base": 183562240,
+            "size": 4
+          },
+          {
+            "base": 182677504,
+            "size": 768
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,mdss_dsi_phy0@ae95500",
+        "path": "/soc/qcom,mdss_dsi_phy0@ae95500",
+        "compatible": [
+          "qcom,dsi-phy-v5.2"
+        ],
+        "regions": [
+          {
+            "base": 183062528,
+            "size": 2560
+          },
+          {
+            "base": 183063808,
+            "size": 1024
+          },
+          {
+            "base": 183058944,
+            "size": 160
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,mdss_dsi_phy1@ae97500",
+        "path": "/soc/qcom,mdss_dsi_phy1@ae97500",
+        "compatible": [
+          "qcom,dsi-phy-v5.2"
+        ],
+        "regions": [
+          {
+            "base": 183070720,
+            "size": 2560
+          },
+          {
+            "base": 183072000,
+            "size": 1024
+          },
+          {
+            "base": 183067136,
+            "size": 160
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "gpu": [
+      {
+        "node": "qcom,kgsl-3d0@3d00000",
+        "path": "/soc/qcom,kgsl-3d0@3d00000",
+        "compatible": [
+          "qcom,adreno-gpu-gen7-11-0",
+          "qcom,kgsl-3d0"
+        ],
+        "regions": [
+          {
+            "base": 63963136,
+            "size": 262144
+          },
+          {
+            "base": 64290816,
+            "size": 65536
+          },
+          {
+            "base": 64360448,
+            "size": 2048
+          },
+          {
+            "base": 64610304,
+            "size": 4096
+          },
+          {
+            "base": 268730368,
+            "size": 32768
+          },
+          {
+            "base": 277872640,
+            "size": 524288
+          },
+          {
+            "base": 279990272,
+            "size": 4096
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 300,
+          "flags": 4,
+          "gsiv": 332
+        },
+        "status": "ok"
+      },
+      {
+        "node": "kgsl-smmu@3da0000",
+        "path": "/soc/kgsl-smmu@3da0000",
+        "compatible": [
+          "qcom,qsmmu-v500",
+          "qcom,adreno-smmu"
+        ],
+        "regions": [
+          {
+            "base": 64618496,
+            "size": 262144
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 673,
+          "flags": 4,
+          "gsiv": 705
+        },
+        "status": "ok"
+      },
+      {
+        "node": "usecase5_kgsl",
+        "path": "/soc/iommu_test_device/usecase5_kgsl",
+        "compatible": [
+          "qcom,iommu-debug-usecase"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "usecase6_kgsl_dma",
+        "path": "/soc/iommu_test_device/usecase6_kgsl_dma",
+        "compatible": [
+          "qcom,iommu-debug-usecase"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,kgsl-iommu@3da0000",
+        "path": "/soc/qcom,kgsl-iommu@3da0000",
+        "compatible": [
+          "qcom,kgsl-smmu-v2"
+        ],
+        "regions": [
+          {
+            "base": 64618496,
+            "size": 262144
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "gfx3d_user",
+        "path": "/soc/qcom,kgsl-iommu@3da0000/gfx3d_user",
+        "compatible": [
+          "qcom,smmu-kgsl-cb"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "gfx3d_secure",
+        "path": "/soc/qcom,kgsl-iommu@3da0000/gfx3d_secure",
+        "compatible": [
+          "qcom,smmu-kgsl-cb"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      }
+    ],
+    "pcie": [
+      {
+        "node": "pdc@b350000",
+        "path": "/soc/pdc@b350000",
+        "compatible": [
+          "qcom,cliffs-pcie-pdc",
+          "qcom,pcie-pdc"
+        ],
+        "regions": [
+          {
+            "base": 188022784,
+            "size": 131072
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "crm@1d01000",
+        "path": "/soc/crm@1d01000",
+        "compatible": [
+          "qcom,pcie-crm"
+        ],
+        "regions": [
+          {
+            "base": 30412800,
+            "size": 12288
+          },
+          {
+            "base": 30427136,
+            "size": 2048
+          },
+          {
+            "base": 30429184,
+            "size": 8192
+          },
+          {
+            "base": 30425088,
+            "size": 2048
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 248,
+          "flags": 1,
+          "gsiv": 280
+        },
+        "status": null
+      },
+      {
+        "node": "pcie0",
+        "path": "/soc/pinctrl@f000000/pcie0",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie0_perst_default",
+        "path": "/soc/pinctrl@f000000/pcie0/pcie0_perst_default",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie0_clkreq_default",
+        "path": "/soc/pinctrl@f000000/pcie0/pcie0_clkreq_default",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie0_wake_default",
+        "path": "/soc/pinctrl@f000000/pcie0/pcie0_wake_default",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie0_clkreq_sleep",
+        "path": "/soc/pinctrl@f000000/pcie0/pcie0_clkreq_sleep",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie_0_pipe_clk",
+        "path": "/soc/clocks/pcie_0_pipe_clk",
+        "compatible": [
+          "fixed-clock"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "interconnect@16C0000",
+        "path": "/soc/interconnect@16C0000",
+        "compatible": [
+          "qcom,cliffs-pcie_anoc"
+        ],
+        "regions": [
+          {
+            "base": 23855104,
+            "size": 74752
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "pcie_qtb@16cd000",
+        "path": "/soc/apps-smmu@15000000/pcie_qtb@16cd000",
+        "compatible": [
+          "qcom,qsmmuv500-tbu",
+          "qcom,qtb500"
+        ],
+        "regions": [
+          {
+            "base": 23908352,
+            "size": 4096
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,pcie@1c00000",
+        "path": "/soc/qcom,pcie@1c00000",
+        "compatible": [
+          "qcom,pci-msm"
+        ],
+        "regions": [
+          {
+            "base": 29360128,
+            "size": 12288
+          },
+          {
+            "base": 29384704,
+            "size": 8192
+          },
+          {
+            "base": 1610612736,
+            "size": 3869
+          },
+          {
+            "base": 1610616608,
+            "size": 168
+          },
+          {
+            "base": 1610616832,
+            "size": 4096
+          },
+          {
+            "base": 1611661312,
+            "size": 1048576
+          },
+          {
+            "base": 30437376,
+            "size": 16384
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 140,
+          "flags": 4,
+          "gsiv": 172
+        },
+        "status": "disabled"
+      },
+      {
+        "node": "pcie0_rp",
+        "path": "/soc/qcom,pcie@1c00000/pcie0_rp",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,pcie0_msi@0x17110040",
+        "path": "/soc/qcom,pcie0_msi@0x17110040",
+        "compatible": [
+          "qcom,pci-msi"
+        ],
+        "regions": [
+          {
+            "base": 386990144,
+            "size": 0
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 768,
+          "flags": 1,
+          "gsiv": 800
+        },
+        "status": "disabled"
+      }
+    ],
+    "rpmh": [
+      {
+        "node": "rpmh",
+        "path": "/soc/mem_dump/rpmh",
+        "compatible": null,
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rsc@17a00000",
+        "path": "/soc/rsc@17a00000",
+        "compatible": [
+          "qcom,rpmh-rsc"
+        ],
+        "regions": [
+          {
+            "base": 396361728,
+            "size": 65536
+          },
+          {
+            "base": 396427264,
+            "size": 65536
+          },
+          {
+            "base": 396492800,
+            "size": 65536
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 3,
+          "flags": 4,
+          "gsiv": 35
+        },
+        "status": null
+      },
+      {
+        "node": "clock-controller",
+        "path": "/soc/rsc@17a00000/drv@2/clock-controller",
+        "compatible": [
+          "qcom,cliffs-rpmh-clk"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-cxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-cxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-nsplvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-nsplvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-msslvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-msslvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-mxclvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-mxclvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-mmcxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-mmcxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-mxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-mxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-lcxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-lcxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-lmxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-lmxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ebilvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ebilvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-gfxlvl",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-gfxlvl",
+        "compatible": [
+          "qcom,rpmh-arc-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpe1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpe1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpe2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpe2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpe3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpe3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpb1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpb1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpb2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpb2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpb3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpb3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob4",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob4",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob5",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob5",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob7",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob7",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob8",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob8",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob9",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob9",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob10",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob10",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob11",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob11",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob12",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob12",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob13",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob13",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob14",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob14",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob16",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob16",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob17",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob17",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob18",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob18",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob19",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob19",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob20",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob20",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob21",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob21",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob22",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob22",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldob23",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldob23",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-bobb1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-bobb1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoc1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoc1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoc3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoc3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldod1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldod1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldod3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldod3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe4",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe4",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe5",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe5",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe6",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe6",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldoe7",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldoe7",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-smpj1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-smpj1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom4",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom4",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom6",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom6",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldom7",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldom7",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon1",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon1",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon2",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon2",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon3",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon3",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon4",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon4",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon5",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon5",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon6",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon6",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rpmh-regulator-ldon7",
+        "path": "/soc/rsc@17a00000/drv@2/rpmh-regulator-ldon7",
+        "compatible": [
+          "qcom,rpmh-vrm-regulator"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "rsc@add4000",
+        "path": "/soc/rsc@add4000",
+        "compatible": [
+          "qcom,rpmh-rsc"
+        ],
+        "regions": [
+          {
+            "base": 182272000,
+            "size": 4096
+          },
+          {
+            "base": 182276096,
+            "size": 4096
+          },
+          {
+            "base": 182280192,
+            "size": 4096
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 368,
+          "flags": 4,
+          "gsiv": 400
+        },
+        "status": null
+      },
+      {
+        "node": "rsc@af20000",
+        "path": "/soc/rsc@af20000",
+        "compatible": [
+          "qcom,rpmh-rsc"
+        ],
+        "regions": [
+          {
+            "base": 183631872,
+            "size": 65536
+          }
+        ],
+        "interrupt": {
+          "kind": "SPI",
+          "spi": 129,
+          "flags": 4,
+          "gsiv": 161
+        },
+        "status": null
+      },
+      {
+        "node": "sde_rsc_rpmh",
+        "path": "/soc/rsc@af20000/drv@0/sde_rsc_rpmh",
+        "compatible": [
+          "qcom,sde-rsc-rpmh"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "sram@c3f0000",
+        "path": "/soc/sram@c3f0000",
+        "compatible": [
+          "qcom,rpmh-stats-v4"
+        ],
+        "regions": [
+          {
+            "base": 205455360,
+            "size": 1024
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "lpass-cdc-clk-rsc-mngr",
+        "path": "/soc/spf_core_platform/lpass-cdc/lpass-cdc-clk-rsc-mngr",
+        "compatible": [
+          "qcom,lpass-cdc-clk-rsc-mngr"
+        ],
+        "regions": [],
+        "interrupt": null,
+        "status": null
+      },
+      {
+        "node": "qcom,sde_rscc@af20000",
+        "path": "/soc/qcom,sde_rscc@af20000",
+        "compatible": [
+          "qcom,sde-rsc"
+        ],
+        "regions": [
+          {
+            "base": 183631872,
+            "size": 19816
+          },
+          {
+            "base": 183697408,
+            "size": 16340
+          }
+        ],
+        "interrupt": null,
+        "status": null
+      }
+    ]
+  },
+  "cpu": {
+    "count": 8,
+    "mpidr_reg": [
+      [
+        "0x0",
+        "0x0"
+      ],
+      [
+        "0x0",
+        "0x100"
+      ],
+      [
+        "0x0",
+        "0x200"
+      ],
+      [
+        "0x0",
+        "0x300"
+      ],
+      [
+        "0x0",
+        "0x400"
+      ],
+      [
+        "0x0",
+        "0x500"
+      ],
+      [
+        "0x0",
+        "0x600"
+      ],
+      [
+        "0x0",
+        "0x700"
+      ]
+    ],
+    "compatible": [
+      "qcom,kryo"
+    ],
+    "domain_map": {
+      "cluster0": [
+        "core0",
+        "core1",
+        "core2"
+      ],
+      "cluster1": [
+        "core0",
+        "core1",
+        "core2",
+        "core3"
+      ],
+      "cluster2": [
+        "core0"
+      ]
+    }
+  }
+}

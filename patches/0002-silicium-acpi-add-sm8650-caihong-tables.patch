@@ -1,0 +1,359 @@
+diff --git a/Platforms/OnePlus/caihong/DSDT.aml b/Platforms/OnePlus/caihong/DSDT.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..88ba529d960a08891edc3185738531462e3fb6a4
+GIT binary patch
+literal 743
+zcmb7?yH3L}6o!ujNz({uD@6h^AubXKkW6VQV;$#GOU;G2>C(Zx25SZ+-XpvZBX7XU
+zBjAuyOyq^xpZ?G1KgZ|(;==$iuG1vQ=A05XOOpr?0I*~+KetYf`reh`o>-NqG%K(z
+zX3XCuG-DX!3D}}wKDb@M7X&J&*HAY)3aQkY%o^$_$7o}>T5PM0jkMTy8yjmevyI(p
+zF{_PDv{*;QNT&$-y0!<J#={XAuWPdfr9>&uy%aR(VCP;D4i26D=dN7D^c?{<;Kc%j
+zF63UGpsL?j<$)h8u{04sm(AO*E%JB?6|Bn0EV!pAF}?Txql8BXpx-E8<t1#CQ!8TW
+zpI}U7FqIckj~0f(kLR}m?N9(cnTzC5UG%9MLX&4PYg(-%F~xOcZOD=gQ!-o+q6m(a
+R)&|brcWZCn4oo*c{{l4fp#cB@
+
+literal 0
+HcmV?d00001
+
+diff --git a/Platforms/OnePlus/caihong/Sources/DSDT.dsl b/Platforms/OnePlus/caihong/Sources/DSDT.dsl
+new file mode 100644
+index 0000000..9203fe0
+--- /dev/null
++++ b/Platforms/OnePlus/caihong/Sources/DSDT.dsl
+@@ -0,0 +1,183 @@
++/*
++ * DSDT for OnePlus Pad Pro (caihong / OPD2404), Qualcomm SM8650 ("Cliffs")
++ *
++ * SPDX-License-Identifier: BSD-2-Clause-Patent
++ *
++ * PROVENANCE OF EVERY ADDRESS IN THIS FILE
++ * ========================================
++ * All numeric values below were extracted from the device's own signed
++ * firmware images (dtbo.img index 7 = the active overlay, and the vendor DTB
++ * carried in vendor_boot.img).  The extraction is reproducible with
++ *   scripts/extract_dtb.py  and  scripts/extract_hw.py
++ * and is recorded in docs/hardware-sm8650.md.  Nothing here is guessed from a
++ * different SoC.
++ *
++ *   SoC identification
++ *     pinctrl@f000000   compatible = "qcom,cliffs-pinctrl"
++ *     mainline equivalent compatible = "qcom,sm8650-tlmm"
++ *     -> "Cliffs" is Qualcomm's codename for SM8650.  SM8550 ("Kailua") and
++ *        SM8750 ("Pakala") are DIFFERENT SoCs and their constants are not
++ *        reused except where explicitly noted.
++ *
++ *   GICv3       interrupt-controller@17100000  (GICD 0x10000, GICR 0x200000
++ *               @0x17180000, #interrupt-cells = 3)
++ *   Arch timer  arm,armv8-timer, clock-frequency = 19200000,
++ *               PPI 13/14 -> GSIV 29/30, hypervisor 11/12, virt 10? (sec below)
++ *   UFS         ufshc@1d84000   reg 0x1d84000+0x3000, 0x1d88000+0x8000,
++ *                               0x1d90000+0x9000, 0x1da5000+0x2000, 0x1da4000+0x10
++ *                               interrupts = <0 265 4>  -> GSIV 0x129
++ *   USB3        ssusb@a600000 / dwc3@a600000
++ *                               reg 0xa600000+0xd93c, interrupts <0 133 4>
++ *                               -> GSIV 0xA5
++ *   TLMM/GPIO   pinctrl@f000000 reg 0xf000000+0x1000000, irq <0 208 4>
++ *                               -> GSIV 0xF0
++ *   SPMI        qcom,spmi@c42d000 (pmic-arb) and qcom,spmi@c432000
++ *   Debug UART  qcom,qup_uart@a94000 (qcom,geni-debug-uart)
++ *                               reg 0xa94000+0x4000, irq <0 358 4> -> GSIV 0x186
++ *
++ * KNOWN GAPS (deliberately NOT invented)
++ *   - Display / Adreno GPU: no ACPI device is emitted.  The panel is
++ *     mdss_dsi_panel_csot_nt36532_2120_3000_dual_dsc_144hz_vid on
++ *     mdss_mdp@ae00000 / mdss_dsi_ctrl0@ae94000, but the Windows side needs a
++ *     WDDM miniport (KGSL/DPU successor) that does not exist publicly.  TODO.
++ *   - Touch / pen: Novatek NT36532 on an I2C bus; the exact bus instance and
++ *     I2C address are not yet resolved from the overlay.  TODO.
++ *   - Wi-Fi/BT, audio, battery/charger, thermal: TODO, need PMIC child
++ *     resolution from the dtbo overlay and board wiring.
++ *   - PMIC SPMI USIDs: the SPMI controller is declared, children are TODO.
++ */
++
++DefinitionBlock ("DSDT.aml", "DSDT", 2, "ONEPLS", "CAIHONG", 0x00000001)
++{
++    Scope (\_SB)
++    {
++        /* ------------------------------------------------------------------
++         * CPUs.  SM8650 is 8 cores in 3 clusters (1x X4 + 3x A720 + 2x A520
++         * is the shipping configuration; the DTB cpus{} node is the authority
++         * and is cross-checked by scripts/extract_hw.py).  _UID must match the
++         * MPIDR ordering used by EDK2's ArmPkg MP core, i.e. 0..7.
++         * ------------------------------------------------------------------ */
++        Device (CPU0) { Name (_HID, "ACPI0007") Name (_UID, 0) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU1) { Name (_HID, "ACPI0007") Name (_UID, 1) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU2) { Name (_HID, "ACPI0007") Name (_UID, 2) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU3) { Name (_HID, "ACPI0007") Name (_UID, 3) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU4) { Name (_HID, "ACPI0007") Name (_UID, 4) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU5) { Name (_HID, "ACPI0007") Name (_UID, 5) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU6) { Name (_HID, "ACPI0007") Name (_UID, 6) Method (_STA, 0) { Return (0x0F) } }
++        Device (CPU7) { Name (_HID, "ACPI0007") Name (_UID, 7) Method (_STA, 0) { Return (0x0F) } }
++
++        /* ------------------------------------------------------------------
++         * UFS host controller.  _HID QCOM24A5 is the HID the Qualcomm UFS
++         * Windows driver binds to (same HID used by every other Mu-Qcom
++         * platform).  Resource span 0x1D84000..0x1DA7000 is derived from the
++         * union of the DTB `reg` entries listed above (end = 0x1DA5000+0x2000).
++         * ------------------------------------------------------------------ */
++        Device (UFS0)
++        {
++            Name (_HID, "QCOM24A5")
++            Name (_UID, Zero)
++            Name (_CCA, Zero)
++
++            Method (_STA, 0) { Return (0x0F) }
++
++            Method (_CRS, 0)
++            {
++                Name (RBUF, ResourceTemplate ()
++                {
++                    Memory32Fixed (ReadWrite, 0x01D84000, 0x00023000)
++                    Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 0x00000129 }
++                })
++                Return (RBUF)
++            }
++
++            Device (DEV0)
++            {
++                Method (_ADR, 0) { Return (0x08) }
++                Method (_RMV, 0) { Return (Zero) }
++            }
++        }
++
++        /* ------------------------------------------------------------------
++         * USB3 DRD controller (ssusb@a600000, dwc3 child).  GSIV 0xA5 comes
++         * from the dwc3 interrupt <0 133 4> (32 + 133).
++         * Only the controller itself is described here; Type-C role switch,
++         * redriver and DisplayPort-altmode are TODO.
++         * ------------------------------------------------------------------ */
++        Device (USB0)
++        {
++            Name (_HID, "QCOM0C8B")
++            Name (_UID, Zero)
++            Name (_CCA, Zero)
++
++            Method (_STA, 0) { Return (0x0F) }
++
++            Method (_CRS, 0)
++            {
++                Name (RBUF, ResourceTemplate ()
++                {
++                    Memory32Fixed (ReadWrite, 0x0A600000, 0x00100000)
++                    Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 0x000000A5 }
++                })
++                Return (RBUF)
++            }
++        }
++
++        /* ------------------------------------------------------------------
++         * TLMM / pin controller.  The Windows pinctrl driver consumes
++         * QCOM0C0C + QCOMFFEB, identical to the other Mu-Qcom platforms.
++         * Base 0xF000000 length 0x1000000, GSIV 0xF0 (32 + 208).
++         * ------------------------------------------------------------------ */
++        Device (GIO0)
++        {
++            Name (_HID, "QCOM0C0C")
++            Name (_CID, "QCOMFFEB")
++            Name (_UID, Zero)
++
++            Method (_STA, 0) { Return (0x0F) }
++
++            Method (_CRS, 0)
++            {
++                Name (RBUF, ResourceTemplate ()
++                {
++                    Memory32Fixed (ReadWrite, 0x0F000000, 0x01000000)
++                    Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x000000F0 }
++                })
++                Return (RBUF)
++            }
++        }
++
++        /* ------------------------------------------------------------------
++         * SPMI PMIC arbiter.  Two arbiter instances exist in the DTB
++         * (0xC42D000 primary, 0xC432000 secondary).  Only the primary is
++         * declared; PMIC child devices (PM8550 family) are TODO.
++         * ------------------------------------------------------------------ */
++        Device (SPMI)
++        {
++            Name (_HID, "QCOM0C0B")
++            Name (_CID, "PNP0CA2")
++            Name (_UID, Zero)
++
++            Method (_STA, 0) { Return (0x0F) }
++
++            Method (_CRS, 0)
++            {
++                Name (RBUF, ResourceTemplate ()
++                {
++                    Memory32Fixed (ReadWrite, 0x0C42D000, 0x00004000)
++                })
++                Return (RBUF)
++            }
++        }
++
++        /* ------------------------------------------------------------------
++         * The GENI debug UART (qcom,qup_uart@a94000, GSIV 0x186) is NOT
++         * declared here.  Its ACPI _HID could not be verified from any
++         * first-party source: the stock Qualcomm UEFI image in uefi.img
++         * contains no readable ACPI strings, and no Mu-Qcom platform
++         * describes a QUP UART.  Emitting a fabricated HID would be worse
++         * than omitting the device.  Early console therefore relies on DBG2
++         * alone (see acpi/caihong/DBG2.dsl).  See docs/hardware-matrix.md,
++         * row "debug UART".  TODO.
++         * ------------------------------------------------------------------ */
++    }
++}
+diff --git a/SoCs/Qualcomm/Cliffs/APIC.aml b/SoCs/Qualcomm/Cliffs/APIC.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..f769213d900e685dc3bec29d72ac63d6482971b3
+GIT binary patch
+literal 744
+zcmb7>%L;-(7=`~X+CrfgLJBQ}TDWM@q8AW}5<~~<nR<#Iu*c{>o|z&fXa>&kU(WgP
+zQkuGYPDO%8*Pcvst;+h+wddU2Me6p}6yY`(d!pV|A`@G#Kck;jHf++7H8LQA<OJi$
+zHl)8V5;wHEM^Ouj`Z@x+#s9>dR)p;#ai$&QPu!7+u+5V=*ADV079=8U^CSk^LH@)&
+wi3r;~iJ^9oKk+~!!ZuIhLOaNxcq9>FJ@`R!7N<j_*NR)M@S&H9n<wx23oX490RR91
+
+literal 0
+HcmV?d00001
+
+diff --git a/SoCs/Qualcomm/Cliffs/DBG2.aml b/SoCs/Qualcomm/Cliffs/DBG2.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..83231119d74ca5025743501ad6b4efce1df10e2e
+GIT binary patch
+literal 1364
+zcmZ>9ayJTLWnf^u>F?(n;1lfZ=;`6_=dKXY#=zj|7viJJsi2_4z`(!`#Eb?Ej9d(A
+zKo$@*2m=W*1|<dt1t2`I5-i9dz`zg_AMB(T>KNq0z<7m$iHpIEVG4r-19O9OAV|F)
+zL_I?S7gz&GFO>cNKR*LPe^9Ui1JGFvMiHKF%pj#qKzy8m;m7~~|3O?3U!Vi10}KQN
+zK>RIG{%c;SFqJ81r{GY0eriDS6NHWKC&NMICq`iS5b_f_@x%g*r~eP3@dUJFIK<OH
+i`iYo$Vn9lJ5H@<+Ga6KB50sq=r9E=|G?4KG^AiB?@PYvV
+
+literal 0
+HcmV?d00001
+
+diff --git a/SoCs/Qualcomm/Cliffs/DSDT.aml b/SoCs/Qualcomm/Cliffs/DSDT.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..88ba529d960a08891edc3185738531462e3fb6a4
+GIT binary patch
+literal 743
+zcmb7?yH3L}6o!ujNz({uD@6h^AubXKkW6VQV;$#GOU;G2>C(Zx25SZ+-XpvZBX7XU
+zBjAuyOyq^xpZ?G1KgZ|(;==$iuG1vQ=A05XOOpr?0I*~+KetYf`reh`o>-NqG%K(z
+zX3XCuG-DX!3D}}wKDb@M7X&J&*HAY)3aQkY%o^$_$7o}>T5PM0jkMTy8yjmevyI(p
+zF{_PDv{*;QNT&$-y0!<J#={XAuWPdfr9>&uy%aR(VCP;D4i26D=dN7D^c?{<;Kc%j
+zF63UGpsL?j<$)h8u{04sm(AO*E%JB?6|Bn0EV!pAF}?Txql8BXpx-E8<t1#CQ!8TW
+zpI}U7FqIckj~0f(kLR}m?N9(cnTzC5UG%9MLX&4PYg(-%F~xOcZOD=gQ!-o+q6m(a
+R)&|brcWZCn4oo*c{{l4fp#cB@
+
+literal 0
+HcmV?d00001
+
+diff --git a/SoCs/Qualcomm/Cliffs/DSDT_minimal.asl b/SoCs/Qualcomm/Cliffs/DSDT_minimal.asl
+new file mode 100644
+index 0000000..798b36c
+--- /dev/null
++++ b/SoCs/Qualcomm/Cliffs/DSDT_minimal.asl
+@@ -0,0 +1,71 @@
++﻿DefinitionBlock ("DSDT_minimal.aml", "DSDT", 2, "ONEPLS", "SM8650 ", 3)
++{
++    /*
++     * Minimal DSDT: processors only.
++     *
++     * Used as a bring-up stepping stone and as a fallback if the full caihong
++     * DSDT (Silicium-ACPI/Platforms/OnePlus/caihong) is not yet wired in.
++     * 8 processors / 3 clusters, matching the SM8650 vendor DTB
++     * (qcom,cpuidle-domain cpu-map = 3 / 4 / 1).
++     *
++     * OEM ID is "ONEPLS" because ACPI allows at most 6 characters.
++     */
++    Scope (\_SB)
++    {
++        Device (CPU0)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 0)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU1)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 1)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU2)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 2)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU3)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 3)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU4)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 4)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU5)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 5)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU6)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 6)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++
++        Device (CPU7)
++        {
++            Name (_HID, "ACPI0007")
++            Name (_UID, 7)
++            Method (_STA, 0, NotSerialized) { Return (0x0F) }
++        }
++    }
++}
+diff --git a/SoCs/Qualcomm/Cliffs/FACP.aml b/SoCs/Qualcomm/Cliffs/FACP.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..edc9ad67ffbd436bf6cc3395f4e9e47cc479a1b7
+GIT binary patch
+literal 276
+zcmZ>BbPf<<WME+H_xE!R@CkNy^z`ueb5{sxV_@*~3-QrlQ&wPr0S*|0654=)nSp_M
+Vi^2r3A&fw~2MY*v_V)$31prMR3jqKC
+
+literal 0
+HcmV?d00001
+
+diff --git a/SoCs/Qualcomm/Cliffs/GTDT.aml b/SoCs/Qualcomm/Cliffs/GTDT.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..01d354668c4f5600034fec186fe782c6ecaf52d2
+GIT binary patch
+literal 156
+zcmZ<{aS55jz`(#H<?rVj;1lfZ=;`6_=dKXY#=zj|7viJArmXNE3V_NOWPz9kh~=QP
+uG?bQt(lE7*Kz;%cGuVI#Cvgx75)%P2KtKQ@#-IS9H6Wr4YEYU9NCN=%nHvEB
+
+literal 0
+HcmV?d00001
+
+diff --git a/SoCs/Qualcomm/Cliffs/PPTT.aml b/SoCs/Qualcomm/Cliffs/PPTT.aml
+new file mode 100644
+index 0000000000000000000000000000000000000000..de0995c968347596ca0d49837aa5dd16c0ff5780
+GIT binary patch
+literal 570
+zcmWFt2nn%bVqjow^!IZO@CkNy^z`ueb5{sxV_@*~3-QrlQ&wP-W55R_fVz?7L2MNu
+zW(1031yFG(s3b^z6o^ftI4<*Xi8IJBFaSNuPz16I2te#zKzs?rL6QTx2bUa39G4t3
+l4!JI%I13&*Ry=ZSc;wh|$SnejbKsHV#3RRrM~)j!4gk1DCIJ8d
+
+literal 0
+HcmV?d00001
+

@@ -1,0 +1,3018 @@
+diff --git a/Platforms/OnePlus/caihongPkg/DeviceBuild.py b/Platforms/OnePlus/caihongPkg/DeviceBuild.py
+new file mode 100644
+index 0000000..13f283f
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/DeviceBuild.py
+@@ -0,0 +1,208 @@
++##
++# Copyright (c) Microsoft Corporation.
++# SPDX-License-Identifier: BSD-2-Clause-Patent
++##
++
++import datetime
++import logging
++import os
++import uuid
++
++from io import StringIO
++from pathlib import Path
++
++from edk2toolext.environment import shell_environment
++from edk2toolext.environment.uefi_build import UefiBuilder
++from edk2toolext.invocables.edk2_platform_build import BuildSettingsManager
++from edk2toolext.invocables.edk2_pr_eval import PrEvalSettingsManager
++from edk2toolext.invocables.edk2_setup import (RequiredSubmodule, SetupSettingsManager)
++from edk2toolext.invocables.edk2_update import UpdateSettingsManager
++from edk2toolext.invocables.edk2_parse import ParseSettingsManager
++from edk2toollib.utility_functions import RunCmd
++
++# ####################################################################################### #
++#                                Common Configuration                                     #
++# ####################################################################################### #
++class CommonPlatform ():
++    PackagesSupported = ("caihongPkg")
++    ArchSupported = ("AARCH64")
++    TargetsSupported = ("DEBUG", "RELEASE")
++    Scopes = ('caihong', 'gcc_aarch64_linux', 'edk2-build')
++    WorkspaceRoot = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
++    PackagesPath = (
++        "Platforms/OnePlus",
++        "Common/Mu",
++        "Common/Mu_OEM_Sample",
++        "Common/Mu_Tiano_Plus",
++        "Features/DFCI",
++        "Mu_Basecore",
++        "Silicon/Arm/Mu_Tiano",
++        "Silicon/Qualcomm",
++        "Silicon/Silicium",
++        "Silicium-ACPI/Platforms/OnePlus",
++        "Silicium-ACPI/SoCs/Qualcomm"
++    )
++
++# ####################################################################################### #
++#                         Configuration for Update & Setup                                #
++# ####################################################################################### #
++class SettingsManager (UpdateSettingsManager, SetupSettingsManager, PrEvalSettingsManager, ParseSettingsManager):
++
++    def GetPackagesSupported (self):
++        return CommonPlatform.PackagesSupported
++
++    def GetArchitecturesSupported (self):
++        return CommonPlatform.ArchSupported
++
++    def GetTargetsSupported (self):
++        return CommonPlatform.TargetsSupported
++
++    def GetRequiredSubmodules (self):
++        return [
++            RequiredSubmodule ("Binaries", True),
++            RequiredSubmodule ("Common/Mu", True),
++            RequiredSubmodule ("Common/Mu_OEM_Sample", True),
++            RequiredSubmodule ("Common/Mu_Tiano_Plus", True),
++            RequiredSubmodule ("Features/DFCI", True),
++            RequiredSubmodule ("Mu_Basecore", True),
++            RequiredSubmodule ("Silicon/Arm/Mu_Tiano", True),
++            RequiredSubmodule ("Silicium-ACPI", True),
++        ]
++
++    def SetArchitectures (self, list_of_requested_architectures):
++        unsupported = set(list_of_requested_architectures) - set(self.GetArchitecturesSupported())
++
++        if (len(unsupported) > 0):
++            errorString = ("Unsupported Architecture Requested: " + " ".join(unsupported))
++            logging.critical (errorString)
++            raise Exception (errorString)
++
++        self.ActualArchitectures = list_of_requested_architectures
++
++    def GetWorkspaceRoot (self):
++        return CommonPlatform.WorkspaceRoot
++
++    def GetActiveScopes (self):
++        return CommonPlatform.Scopes
++
++    def FilterPackagesToTest (self, changedFilesList: list, potentialPackagesList: list) -> list:
++        build_these_packages = []
++        possible_packages = potentialPackagesList.copy ()
++
++        for f in changedFilesList:
++            if "BaseTools" in f:
++                if os.path.splitext(f) not in [".txt", ".md"]:
++                    build_these_packages = possible_packages
++                    break
++
++            if "platform-build-run-steps.yml" in f:
++                build_these_packages = possible_packages
++                break
++
++        return build_these_packages
++
++    def GetPlatformDscAndConfig (self) -> tuple:
++        return ("caihongPkg/caihong.dsc", {})
++
++    def GetName (self):
++        return "caihong"
++
++    def GetPackagesPath (self):
++        return CommonPlatform.PackagesPath
++
++# ####################################################################################### #
++#                         Actual Configuration for Platform Build                         #
++# ####################################################################################### #
++class PlatformBuilder (UefiBuilder, BuildSettingsManager):
++    def __init__ (self):
++        UefiBuilder.__init__ (self)
++
++    def AddCommandLineOptions (self, parserObj):
++        parserObj.add_argument('-a', "--arch", dest="build_arch", type=str, default="AARCH64", help="Optional - CSV of architecture to build. AARCH64 is used for PEI and DXE and is the only valid option for this platform.")
++
++    def RetrieveCommandLineOptions (self, args):
++        if args.build_arch.upper() != "AARCH64":
++            raise Exception("Invalid Arch Specified.  Please see comments in DeviceBuild.py::PlatformBuilder::AddCommandLineOptions")
++
++    def GetWorkspaceRoot (self):
++        return CommonPlatform.WorkspaceRoot
++
++    def GetPackagesPath (self):
++        result = [ shell_environment.GetBuildVars().GetValue("FEATURE_CONFIG_PATH", "") ]
++
++        for a in CommonPlatform.PackagesPath:
++            result.append(a)
++
++        return result
++
++    def GetActiveScopes (self):
++        return CommonPlatform.Scopes
++
++    def GetName (self):
++        return "caihongPkg"
++
++    def GetLoggingLevel (self, loggerType):
++        return logging.INFO
++        return super().GetLoggingLevel(loggerType)
++
++    def SetPlatformEnv (self):
++        logging.debug ("PlatformBuilder SetPlatformEnv")
++
++        self.env.SetValue ("PRODUCT_NAME", "caihong", "Platform Hardcoded")
++        self.env.SetValue ("ACTIVE_PLATFORM", "caihongPkg/caihong.dsc", "Platform Hardcoded")
++        self.env.SetValue ("TARGET_ARCH", "AARCH64", "Platform Hardcoded")
++        self.env.SetValue ("TOOL_CHAIN_TAG", "CLANGPDB", "set default to clangpdb")
++        self.env.SetValue ("EMPTY_DRIVE", "FALSE", "Default to false")
++        self.env.SetValue ("RUN_TESTS", "FALSE", "Default to false")
++        self.env.SetValue ("SHUTDOWN_AFTER_RUN", "FALSE", "Default to false")
++        self.env.SetValue ("BLD_*_BUILDID_STRING", "Unknown", "Default")
++        self.env.SetValue ("BUILDREPORTING", "TRUE", "Enabling build report")
++        self.env.SetValue ("BUILDREPORT_TYPES", "PCD DEPEX FLASH BUILD_FLAGS LIBRARY FIXED_ADDRESS HASH", "Setting build report types")
++        self.env.SetValue ("BLD_*_MEMORY_PROTECTION", "TRUE", "Default")
++        self.env.SetValue ("BLD_*_SHIP_MODE", "FALSE", "Default")
++        self.env.SetValue ("BLD_*_DEVICE_MODEL", self.env.GetValue("DEVICE_MODEL"), "Default")
++        self.env.SetValue ("BLD_*_FD_BASE", self.env.GetValue("FD_BASE"), "Default")
++        self.env.SetValue ("BLD_*_FD_SIZE", self.env.GetValue("FD_SIZE"), "Default")
++        self.env.SetValue ("BLD_*_FD_BLOCKS", self.env.GetValue("FD_BLOCKS"), "Default")
++
++        return 0
++
++    def PlatformPreBuild (self):
++        return 0
++
++    def PlatformPostBuild (self):
++        return 0
++
++    def FlashRomImage (self):
++        return 0
++
++if __name__ == "__main__":
++    import argparse
++    import sys
++
++    from edk2toolext.invocables.edk2_platform_build import Edk2PlatformBuild
++    from edk2toolext.invocables.edk2_setup import Edk2PlatformSetup
++    from edk2toolext.invocables.edk2_update import Edk2Update
++
++    SCRIPT_PATH = os.path.relpath (__file__)
++
++    parser = argparse.ArgumentParser (add_help=False)
++
++    parse_group = parser.add_mutually_exclusive_group()
++
++    parse_group.add_argument ("--update", "--UPDATE", action='store_true', help="Invokes stuart_update")
++    parse_group.add_argument ("--setup",  "--SETUP",  action='store_true', help="Invokes stuart_setup")
++
++    args, remaining = parser.parse_known_args()
++
++    new_args = ["stuart", "-c", SCRIPT_PATH]
++    new_args = new_args + remaining
++
++    sys.argv = new_args
++
++    if args.setup:
++        Edk2PlatformSetup().Invoke()
++    elif args.update:
++        Edk2Update().Invoke()
++    else:
++        Edk2PlatformBuild().Invoke()
+diff --git a/Platforms/OnePlus/caihongPkg/Include/ACPI.inc b/Platforms/OnePlus/caihongPkg/Include/ACPI.inc
+new file mode 100644
+index 0000000..f3bbfb9
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Include/ACPI.inc
+@@ -0,0 +1,21 @@
++FILE FREEFORM = 7E374E25-8E01-4FEE-87F2-390C23C606CD {
++  SECTION RAW = Cliffs/APIC.aml
++# SECTION RAW = Cliffs/BERT.aml
++# SECTION RAW = Cliffs/BGRT.aml
++# SECTION RAW = Cliffs/CSRT.aml
++!if $(TARGET) == DEBUG
++# SECTION RAW = Cliffs/DBG2.aml
++!endif
++  SECTION RAW = caihong/DSDT.aml
++  SECTION RAW = Cliffs/FACP.aml
++# SECTION RAW = Cliffs/FPDT.aml
++  SECTION RAW = Cliffs/GTDT.aml
++# SECTION RAW = Cliffs/IORT.aml
++# SECTION RAW = Cliffs/MCFG.aml
++# SECTION RAW = Cliffs/MSDM.aml
++  SECTION RAW = Cliffs/PPTT.aml
++# SECTION RAW = Cliffs/SPCR.aml
++# SECTION RAW = Cliffs/TPM2.aml
++# SECTION RAW = Cliffs/XSDT.aml
++  SECTION UI = "AcpiTables"
++}
+diff --git a/Platforms/OnePlus/caihongPkg/Include/APRIORI.inc b/Platforms/OnePlus/caihongPkg/Include/APRIORI.inc
+new file mode 100644
+index 0000000..db9d5d1
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Include/APRIORI.inc
+@@ -0,0 +1,138 @@
++APRIORI DXE {
++  # First, install the PCD driver and call DxeInit
++  INF MdeModulePkg/Core/Dxe/DxeMain.inf
++  INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/EnvDxe/EnvDxe.inf
++
++  INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
++  INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
++  INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
++
++  # Next, install cpu protocol and enable the interrupt controller
++  INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
++  INF ArmPkg/Drivers/ArmGic/ArmGicDxe.inf
++
++  # Core Drivers
++  INF EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf
++  INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
++  
++  INF QcomPkg/Drivers/DynamicRamDxe/DynamicRamDxe.inf
++  
++  INF Binaries/caihong/QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ChipInfoDxe/ChipInfoDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PlatformInfoDxe/PlatformInfoDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/HALIOMMUDxe/HALIOMMUDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ULogDxe/ULogDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/IPCCDxe/IPCCDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/GLinkDxe/GLinkDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/VcsDxe/VcsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
++  
++  INF QcomPkg/Drivers/CpuClockHandlerDxe/CpuClockHandlerDxe.inf
++  
++  INF Binaries/caihong/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/I2CDxe/I2CDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
++
++  INF MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
++
++  INF Binaries/caihong/MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
++  INF Binaries/caihong/MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
++  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/SdccDxe/SdccDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
++
++  INF FatPkg/EnhancedFatDxe/Fat.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
++
++  INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/QcomWDogDxe/QcomWDogDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.inf
++
++  INF QcomPkg/Drivers/DdrClockHandlerDxe/DdrClockHandlerDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/OcdtDxe/OplusProject.inf
++  INF Binaries/caihong/QcomPkg/Drivers/Phoenix2_0Dxe/Phoenix2_0Dxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/FeatureEnablerDxe/FeatureEnablerDxe.inf
++  # INF Binaries/caihong/QcomPkg/Drivers/FvUtilsDxe/FvUtilsDxe.inf        
++  # REMOVED: FvUtilsDxe does not exist in the SM8650 uefi.img firmware volume
++  # (verified by extracting all 106 modules; see docs/bringup-log.md B14)
++  INF Binaries/caihong/QcomPkg/Drivers/QRKSDxe/QRKSDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PILProxyDxe/PILProxyDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PILDxe/PILDxe.inf
++  # INF Binaries/caihong/QcomPkg/Drivers/SPSSDxe/SPSSDxe.inf              
++  # REMOVED: SPSSDxe does not exist in the SM8650 uefi.img firmware volume
++  # (verified by extracting all 106 modules; see docs/bringup-log.md B14)
++
++  INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
++  INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
++  INF EmbeddedPkg/EmbeddedMonotonicCounter/EmbeddedMonotonicCounter.inf
++  INF EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf
++  INF MdeModulePkg/Universal/PrintDxe/PrintDxe.inf
++  INF Binaries/caihong/MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
++  INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
++  INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/FontDxe/FontDxe.inf
++
++  INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/SPIDxe/SPIDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PmicGlinkDxe/PmicGlinkDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/QcomChargerDxe/QcomChargerDxeLA.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OplusVibrDxe/OplusVibrDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OplusSecurityDxe/OplusSecurityDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
++
++  INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
++
++!if $(USE_CUSTOM_DISPLAY_DRIVER) == 1
++  INF Binaries/caihong/QcomPkg/Drivers/DisplayDxe/DisplayDxe.inf
++!else
++  INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
++!endif
++
++  INF Binaries/caihong/QcomPkg/Drivers/LimitsDxe/LimitsDxe.inf
++!if $(USE_CUSTOM_DISPLAY_DRIVER) == 1
++  INF Binaries/caihong/QcomPkg/Drivers/CPRDxe/CPRDxe.inf
++!endif
++  INF Binaries/caihong/QcomPkg/Drivers/GpiDxe/GpiDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UCDxe/UCDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/RNGDxe/RngDxe.inf
++
++  INF EmbeddedPkg/SimpleTextInOutSerial/SimpleTextInOutSerial.inf
++  INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
++  INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
++  INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/RscDxe/RscDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OGaugeAuthDxe/OGaugeAuth.inf
++}
+diff --git a/Platforms/OnePlus/caihongPkg/Include/DXE.inc b/Platforms/OnePlus/caihongPkg/Include/DXE.inc
+new file mode 100644
+index 0000000..f4502d5
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Include/DXE.inc
+@@ -0,0 +1,134 @@
++  INF MdeModulePkg/Core/Dxe/DxeMain.inf
++  INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
++
++  # caihong bring-up: EnvDxeEnhanced returns EFI_NOT_FOUND on this platform
++# (its SMEM memory-partition table read fails).  Disabled temporarily to see how
++# far the rest of DXE dispatch gets; re-enable once the SMEM/cfg issue is fixed.
++#INF Binaries/caihong/QcomPkg/Drivers/EnvDxe/EnvDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ParserDxe/ParserDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/SerialPortDxe/SerialPortDxe.inf
++
++  INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
++  INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
++  INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
++  INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
++  INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PsStateDxe/PsStateDxe.inf
++
++  INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
++  INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
++  INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
++  INF EmbeddedPkg/EmbeddedMonotonicCounter/EmbeddedMonotonicCounter.inf
++  INF MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf
++  INF EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf
++  INF EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf
++  INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/FontDxe/FontDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/QcomWDogDxe/QcomWDogDxe.inf
++
++  INF ArmPkg/Drivers/ArmGic/ArmGicDxe.inf
++  INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/ChipInfoDxe/ChipInfoDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/IPCCDxe/IPCCDxe.inf
++  #INF Binaries/caihong/QcomPkg/Drivers/GLinkDxe/GLinkDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PlatformInfoDxe/PlatformInfoDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/HALIOMMUDxe/HALIOMMUDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/I2CDxe/I2CDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
++
++  INF Binaries/caihong/MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
++  INF Binaries/caihong/MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
++  INF Binaries/caihong/MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
++  INF FatPkg/EnhancedFatDxe/Fat.inf
++  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ULogDxe/ULogDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/VcsDxe/VcsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
++  
++  #INF QcomPkg/Drivers/CpuClockHandlerDxe/CpuClockHandlerDxe.inf
++  
++  INF Binaries/caihong/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
++  
++  INF QcomPkg/Drivers/DynamicRamDxe/DynamicRamDxe.inf
++
++  INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/RscDxe/RscDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OGaugeAuthDxe/OGaugeAuth.inf
++
++  INF EmbeddedPkg/SimpleTextInOutSerial/SimpleTextInOutSerial.inf
++  INF MdeModulePkg/Universal/PrintDxe/PrintDxe.inf
++  INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
++  INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
++  INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
++
++!if $(USE_CUSTOM_DISPLAY_DRIVER) == 1
++  INF Binaries/caihong/QcomPkg/Drivers/CPRDxe/CPRDxe.inf
++!endif
++  INF Binaries/caihong/QcomPkg/Drivers/GpiDxe/GpiDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/SPIDxe/SPIDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/SdccDxe/SdccDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/FeatureEnablerDxe/FeatureEnablerDxe.inf
++
++!if $(USE_CUSTOM_DISPLAY_DRIVER) == 1
++  INF Binaries/caihong/QcomPkg/Drivers/DisplayDxe/DisplayDxe.inf
++!else
++  INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
++!endif
++
++  INF Binaries/caihong/QcomPkg/Drivers/QRKSDxe/QRKSDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OcdtDxe/OplusProject.inf
++  #INF Binaries/caihong/QcomPkg/Drivers/Phoenix2_0Dxe/Phoenix2_0Dxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PmicGlinkDxe/PmicGlinkDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/QcomChargerDxe/QcomChargerDxeLA.inf
++  INF Binaries/caihong/QcomPkg/Drivers/OplusVibrDxe/OplusVibrDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/LimitsDxe/LimitsDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.inf
++
++  INF QcomPkg/Drivers/DdrClockHandlerDxe/DdrClockHandlerDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
++
++  INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbMouseAbsolutePointerDxe/UsbMouseAbsolutePointerDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
++
++  INF Binaries/caihong/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/UCDxe/UCDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/RNGDxe/RngDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PILDxe/PILDxe.inf
++  INF Binaries/caihong/QcomPkg/Drivers/PILProxyDxe/PILProxyDxe.inf
++  # INF Binaries/caihong/QcomPkg/Drivers/SPSSDxe/SPSSDxe.inf              
++  # REMOVED: SPSSDxe does not exist in the SM8650 uefi.img firmware volume
++  # (verified by extracting all 106 modules; see docs/bringup-log.md B14)
++  # INF Binaries/caihong/QcomPkg/Drivers/FvUtilsDxe/FvUtilsDxe.inf        
++  # REMOVED: FvUtilsDxe does not exist in the SM8650 uefi.img firmware volume
++  # (verified by extracting all 106 modules; see docs/bringup-log.md B14)
++  INF Binaries/caihong/QcomPkg/Drivers/OplusSecurityDxe/OplusSecurityDxe.inf
+diff --git a/Platforms/OnePlus/caihongPkg/Include/RAW.inc b/Platforms/OnePlus/caihongPkg/Include/RAW.inc
+new file mode 100644
+index 0000000..2ccd22d
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Include/RAW.inc
+@@ -0,0 +1,305 @@
++  FILE FREEFORM = A91D838E-A5FA-4138-825D-455E2303079E {
++    SECTION UI = "BDS_Menu.cfg"
++    SECTION RAW = Binaries/caihong/RawFiles/BDS_Menu.cfg
++  }
++
++  FILE FREEFORM = A1E235DE-E825-4591-9623-C43175811826 {
++    SECTION UI = "SecParti.cfg"
++    SECTION RAW = Binaries/caihong/RawFiles/SecParti.cfg
++  }
++
++  FILE FREEFORM = 8F276EE4-E75E-4C3B-8BCC-C37771E26478 {
++    SECTION UI = "Panel_nt36860_wqhd_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_nt36860_wqhd_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 66B13310-0E1F-4648-BFC4-06804847366F {
++    SECTION UI = "Panel_AC052_S_3_A0001_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AC052_S_3_A0001_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = CB375C57-F041-4778-A733-DA990A656F0F {
++    SECTION UI = "Panel_oplus_nt37705_1240_2772_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_oplus_nt37705_1240_2772_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 36630E03-0236-4983-ABDE-F982B23419FE {
++    SECTION UI = "Panel_vtdr6130_60hz_fhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_60hz_fhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = BC28E12E-C7E0-47F9-BBF9-0B45ED6F4B18 {
++    SECTION UI = "Panel_r66451_144hz_fhd_plus_dsc_vid_cphy.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_144hz_fhd_plus_dsc_vid_cphy.xml
++  }
++
++  FILE FREEFORM = 637AD94D-7D9B-4D5F-B420-770B65BECDA8 {
++    SECTION UI = "Panel_r66451_60hz_fhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_60hz_fhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = 95E7B040-26A2-4511-9ABB-1D95D6DA7082 {
++    SECTION UI = "Panel_truly_wqxga_dual_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_wqxga_dual_vid.xml
++  }
++
++  FILE FREEFORM = 3DE03011-41E8-4353-A4E5-02721E71A0F4 {
++    SECTION UI = "Panel_vtdr6130_144hz_fhd_plus_dsc_cmd_demura.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_144hz_fhd_plus_dsc_cmd_demura.xml
++  }
++
++  FILE FREEFORM = 6523A5C9-91CB-45C0-A2DC-25997CF23369 {
++    SECTION UI = "Panel_boe_amoled_wqhd_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_boe_amoled_wqhd_dsc_vid.xml
++  }
++
++  FILE FREEFORM = C80BA3FB-B274-4C16-905F-3DF2BDDFCF1C {
++    SECTION UI = "Panel_AC052_P_1_A0002_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AC052_P_1_A0002_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = FC034C0C-1961-4BFC-AB97-7889077F58E2 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd_evt2.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd_evt2.xml
++  }
++
++  FILE FREEFORM = EDDD64E0-88FB-44B8-9BB9-07D7C800A843 {
++    SECTION UI = "Panel_AA536_P_3_A0001_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AA536_P_3_A0001_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = C11015D9-B290-4190-B0BA-4E0BD0EDCF79 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 0A60AF27-D18D-452F-BB8B-1A886F7F6CCC {
++    SECTION UI = "Panel_sharp_120hz_qhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_sharp_120hz_qhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 7C8A550B-587D-426B-95E7-E1E7E515DE69 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd_t0.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd_t0.xml
++  }
++
++  FILE FREEFORM = 2476D4FC-66BF-475A-99F6-48128A1848E3 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd_dvt.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd_dvt.xml
++  }
++
++  FILE FREEFORM = DBD1C9A6-EC5D-4648-8A49-0865E0D31A9D {
++    SECTION UI = "Panel_samsung_amb670yf07_1440_3216_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb670yf07_1440_3216_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 294FCBFA-2FC2-4642-92DC-C1622F019930 {
++    SECTION UI = "Panel_AC052_P_3_A0003_dsc_cmd_pvt.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AC052_P_3_A0003_dsc_cmd_pvt.xml
++  }
++
++  FILE FREEFORM = 81CE7295-491D-4E3F-AAA7-AB43FEF2F615 {
++    SECTION UI = "Panel_r66451_60hz_fhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_60hz_fhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = BAFD3200-311D-11E8-8651-0FB3CACF38FB {
++    SECTION UI = "Panel_truly_1080p_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_1080p_vid.xml
++  }
++
++  FILE FREEFORM = 6F2D4884-D8A0-11E9-AF7A-D77B1FE990EC {
++    SECTION UI = "Panel_nt36860_wqhd_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_nt36860_wqhd_dsc_vid.xml
++  }
++
++  FILE FREEFORM = 8BC595B7-391A-4A9A-8256-5B9983B30392 {
++    SECTION UI = "Panel_sharp_4k_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_sharp_4k_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 31B16F72-E20F-440B-9678-41E3203A7F7C {
++    SECTION UI = "Panel_boe_nt37705_1080_2412_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_boe_nt37705_1080_2412_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 8297C793-9861-422C-9F67-D447AF1EA812 {
++    SECTION UI = "Panel_r66451_120hz_fhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_120hz_fhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = E1C189A7-4422-4FAF-B5F6-EE6B52D45C0C {
++    SECTION UI = "Panel_AC052_P_3_A0003_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AC052_P_3_A0003_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = C75B1A62-A85C-4FF3-8262-C52F60499EF3 {
++    SECTION UI = "Panel_samsung_amb670yf08_1440_3216_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb670yf08_1440_3216_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 81466938-BB9E-43DC-A208-A41BA82A5861 {
++    SECTION UI = "Panel_sharp_120hz_qhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_sharp_120hz_qhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = 9874B60A-6B80-4D76-8EEB-7862C780EC03 {
++    SECTION UI = "Panel_r66451_144hz_fhd_plus_dsc_cmd_cphy.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_144hz_fhd_plus_dsc_cmd_cphy.xml
++  }
++
++  FILE FREEFORM = EB0A97F6-39DB-41D4-9B3C-CA3BADC144B4 {
++    SECTION UI = "Panel_truly_wqxga_cmd_splitlink.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_wqxga_cmd_splitlink.xml
++  }
++
++  FILE FREEFORM = E0ABCA0D-64AD-49DF-B2B5-8C6CDB7741B2 {
++    SECTION UI = "Panel_AA551_P_3_A0004_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AA551_P_3_A0004_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 2B0AC264-3093-4832-BC7B-406AAA295019 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd_ldo.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd_ldo.xml
++  }
++
++  FILE FREEFORM = 87273B42-311D-11E8-9324-DFB2DADFC3D1 {
++    SECTION UI = "Panel_truly_1080p_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_1080p_cmd.xml
++  }
++
++  FILE FREEFORM = C3FAF58C-5D54-43C2-9A7F-72693E097802 {
++    SECTION UI = "Panel_oplus_boe_rm692e5_1080_2412_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_oplus_boe_rm692e5_1080_2412_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 297401D2-C353-40D8-B94C-EE9F172F145E {
++    SECTION UI = "Panel_AA551_P_3_A0004_dsc_cmd_demura.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_AA551_P_3_A0004_dsc_cmd_demura.xml
++  }
++
++  FILE FREEFORM = 23EB5E2D-4A4D-4B35-BB7B-BE39D7EE440D {
++    SECTION UI = "Panel_secondary_vtdr6130_144hz_fhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_secondary_vtdr6130_144hz_fhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 0AE323D6-2EBE-11E8-8349-9BA636A0D80C {
++    SECTION UI = "Panel_sharp_1080p_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_sharp_1080p_cmd.xml
++  }
++
++  FILE FREEFORM = D7170685-5965-4B44-9305-37CDB199B9BE {
++    SECTION UI = "Panel_boe_amoled_fhd_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_boe_amoled_fhd_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 0EF4D970-0B59-4AF4-A8F7-F6A239EED792 {
++    SECTION UI = "Panel_vtdr6130_144hz_fhd_plus_dsc_cmd_rfi.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_144hz_fhd_plus_dsc_cmd_rfi.xml
++  }
++
++  FILE FREEFORM = 19B58ACD-B1F8-4078-B9A5-A33584B680E2 {
++    SECTION UI = "Panel_sharp_4k_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_sharp_4k_dsc_vid.xml
++  }
++
++  FILE FREEFORM = D192FEE9-6A04-4BE8-ABFE-5534E2B457EC {
++    SECTION UI = "Panel_secondary_truly_1080p_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_secondary_truly_1080p_vid.xml
++  }
++
++  FILE FREEFORM = 13AC9DC9-0092-4374-AE1A-06FF35950FD0 {
++    SECTION UI = "Panel_truly_wqxga_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_wqxga_dsc_vid.xml
++  }
++
++  FILE FREEFORM = 44B09226-C2B4-45ED-AA6F-6686DB103978 {
++    SECTION UI = "Panel_r66451_120hz_fhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_120hz_fhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = B97392BE-6496-4075-BA73-653E97DF085A {
++    SECTION UI = "panel-oplus-zonda-sec-tianma-nt37705-1240-2772-dsc-cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/panel-oplus-zonda-sec-tianma-nt37705-1240-2772-dsc-cmd.xml
++  }
++
++  FILE FREEFORM = F4A245C8-940E-4523-A53B-82E3C8BC6970 {
++    SECTION UI = "Panel_r66451_120hz_fhd_plus_dsc_cmd_demura.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_120hz_fhd_plus_dsc_cmd_demura.xml
++  }
++
++  FILE FREEFORM = 88CA5ABF-D0AC-4093-A68C-0CFAE1EF9635 {
++    SECTION UI = "Panel_boe_amoled_wqhd_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_boe_amoled_wqhd_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = AE3F9548-010C-4AEC-A9D2-4AE3E16D2F8B {
++    SECTION UI = "Panel_vtdr6130_144hz_fhd_plus_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_144hz_fhd_plus_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = 12372575-2A07-4C4E-BE92-6093A55FED33 {
++    SECTION UI = "Panel_vtdr6130_144hz_fhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_144hz_fhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = D3F8580C-CCB8-4804-BB03-776E7B542FC2 {
++    SECTION UI = "Panel_secondary_truly_1080p_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_secondary_truly_1080p_cmd.xml
++  }
++
++  FILE FREEFORM = 573FA171-1D5C-4C12-BDC8-19DCEFBBD483 {
++    SECTION UI = "Panel_vtdr6130_60hz_fhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_vtdr6130_60hz_fhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = BB1BB399-E946-421E-A5A7-1B1C63DAAB58 {
++    SECTION UI = "Panel_samsung_amb682cg01_1440_3168_dsc_cmd_evt1.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_samsung_amb682cg01_1440_3168_dsc_cmd_evt1.xml
++  }
++
++  FILE FREEFORM = FC6315F9-F8FE-4222-A1E3-226DF55D7592 {
++    SECTION UI = "Panel_truly_wqxga_dual_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_wqxga_dual_cmd.xml
++  }
++
++  FILE FREEFORM = 8CAE2C55-FC5A-410B-812B-8CA22F572F36 {
++    SECTION UI = "Panel_truly_wqxga_dsc_cmd.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_truly_wqxga_dsc_cmd.xml
++  }
++
++  FILE FREEFORM = A413F4E1-50FE-4848-82F1-EFB814608221 {
++    SECTION UI = "Panel_secondary_vtdr6130_144hz_fhd_plus_dsc_vid.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_secondary_vtdr6130_144hz_fhd_plus_dsc_vid.xml
++  }
++
++  FILE FREEFORM = 61156380-EB8A-4618-940F-AB9BDEA1EEC2 {
++    SECTION UI = "Panel_r66451_120hz_fhd_plus_dsc_cmd_hdk.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_r66451_120hz_fhd_plus_dsc_cmd_hdk.xml
++  }
++
++  FILE FREEFORM = 03E9256F-E621-48D8-8576-7E3B4FCF2D41 {
++    SECTION UI = "PanelSimConfig.csv"
++    SECTION RAW = Binaries/caihong/RawFiles/PanelSimConfig.csv
++  }
++
++  FILE FREEFORM = 21E9BDD9-6C3F-4F10-84A5-BBEC322741F1 {
++    SECTION UI = "uefipil.cfg"
++    SECTION RAW = Binaries/caihong/RawFiles/uefipil.cfg
++  }
++
++  FILE FREEFORM = 45FE4B7C-150C-45DA-A021-4BEB2048EC6F {
++    SECTION UI = "QcomChargerCfg.cfg"
++    SECTION RAW = Binaries/caihong/RawFiles/QcomChargerCfg.cfg
++  }
++
++  # caihong's real panel, extracted from the device's own xbl_ramdump.img
++  # (see docs/bringup-log.md B16).  The stock bootloader carries exactly one
++  # 2120x3000 dual-DSI video-mode DSC panel: "CSOT_NT35652".
++  # NOTE: the kernel calls the same panel csot_nt36532_2120_3000_dual_dsc_144hz_vid,
++  # so both a NT35652 and an NT36532 variant may exist across hardware revisions.
++  # GUID below is chosen fresh for caihong; DisplayDxe matches by the UI name.
++  FILE FREEFORM = C2A147E0-7E5B-4E2A-9C6D-1F0B3A5D8E21 {
++    SECTION UI = "Panel_CSOT_NT35652.xml"
++    SECTION RAW = Binaries/caihong/RawFiles/Panel_CSOT_NT35652.xml
++  }
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.c b/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.c
+new file mode 100644
+index 0000000..d8bda2e
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.c
+@@ -0,0 +1,57 @@
++#include <Library/DeviceConfigurationMapLib.h>
++
++STATIC
++CONFIGURATION_DESCRIPTOR_EX
++gDeviceConfigurationDescriptorEx[] = {
++  {"EnableShell", 0x1},
++  {"SecPagePoolCount", 0x800},
++  {"SharedIMEMBaseAddr", 0x146AA000},
++  {"DloadCookieAddr", 0x01FD9000},
++  {"DloadCookieValue", 0x10},
++  {"PilSubsysDbgCookieAddr", 0x146AA6DC},
++  {"PilSubsysDbgCookieVal", 0x53444247},
++  {"NumCpus", 8},
++  {"NumActiveCores", 8},
++  {"MaxLogFileSize", 0x400000},
++  {"UefiMemUseThreshold", 0xE1},
++  {"USBHS1_Config", 0x0},
++  {"UsbFnIoRevNum", 0x00010001},
++  {"PwrBtnShutdownFlag", 0x0},
++  {"Sdc1GpioConfigOn", 0x1E92},
++  {"Sdc2GpioConfigOn", 0x1E92},
++  {"Sdc1GpioConfigOff", 0xA00},
++  {"Sdc2GpioConfigOff", 0xA00},
++  {"EnableSDHCSwitch", 0x1},
++  {"EnableUfsIOC", 1},
++  {"UfsSmmuConfigForOtherBootDev", 1},
++  {"SecurityFlag", 0xC4},
++  {"DetectRetailUserAttentionHotkey", 0x00},
++  {"DetectRetailUserAttentionHotkeyCode", 0x17},
++  {"EnableOEMSetupAppInRetail", 0x0},
++  {"EnableLogFsSyncInRetail", 0x0},
++  {"EnableSecurityHoleForSplashPartition", 0x1},
++  {"ShmBridgememSize", 0xA00000},
++  {"EnableMultiThreading", 1},
++  {"MaxCoreCnt", 8},
++  {"EarlyInitCoreCnt", 1},
++  {"EnableUefiSecAppDebugLogDump", 0x0},
++  {"AllowNonPersistentVarsInRetail", 0x1},
++  {"EnableDisplayThread", 0x0},
++  {"EnableDisplayImageFv", 0x0},
++  {"DDRInfoNotifyFlag", 0x0},
++  {"EnableMultiCoreFvDecompression", 0},
++  {"EnableVariablePolicyEngine", 0},
++  {"EnableACPIFallback", 0x0},
++  {"DRAM_CLK_PERIOD_ADDR", 0x240BA050},
++  {"LoadAutoImageInPILFlag", 0x1},
++  {"OverRideSharedImemBootCfg", 0x8},
++
++  // Terminator
++  {"Terminator", 0xFFFFFFFF}
++};
++
++CONFIGURATION_DESCRIPTOR_EX*
++GetDeviceConfigurationMap ()
++{
++  return gDeviceConfigurationDescriptorEx;
++}
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.inf b/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.inf
+new file mode 100644
+index 0000000..c4aa344
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.inf
+@@ -0,0 +1,14 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = DeviceConfigurationMapLib
++  FILE_GUID                      = D7DDE228-62E4-43E3-B5A1-AB29FB9B0A35
++  MODULE_TYPE                    = BASE
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = DeviceConfigurationMapLib
++
++[Sources]
++  DeviceConfigurationMapLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  QcomPkg/QcomPkg.dec
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.c b/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.c
+new file mode 100644
+index 0000000..c02cc05
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.c
+@@ -0,0 +1,7 @@
++#include <Library/DeviceGuidLib.h>
++
++EFI_GUID
++GetDeviceGuid ()
++{
++  return gcaihongTokenSpaceGuid;
++}
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.inf b/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.inf
+new file mode 100644
+index 0000000..b911759
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.inf
+@@ -0,0 +1,18 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = DeviceGuidLib
++  FILE_GUID                      = A2B9202F-1BBA-421B-9FDB-EBCF54833111
++  MODULE_TYPE                    = DXE_DRIVER
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = DeviceGuidLib|DXE_DRIVER
++
++[Sources]
++  DeviceGuidLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  SiliciumPkg/SiliciumPkg.dec
++  caihongPkg/caihong.dec
++
++[Guids]
++  gcaihongTokenSpaceGuid
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.c b/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.c
+new file mode 100644
+index 0000000..dd2f323
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.c
+@@ -0,0 +1,96 @@
++#include <Library/DeviceMemoryMapLib.h>
++
++//
++// Memory map for OnePlus Pad Pro (caihong / OPD2404), SM8650 "Cliffs".
++//
++// PROVENANCE
++// ----------
++// Every DDR address/length below comes from this device's OWN XBL
++// memory-region table, recovered from xbl_config.img and recorded in
++// docs/abl-memory-map.json.  The previous contents were inherited from the
++// SM8550 (aston) port and described a different layout:
++//
++//     aston                          caihong (this device)
++//     Display Reserved 0xB8000000    Display_Reserved 0xD5100000
++//     UEFI FD          0xBAB00000    UEFI_FD          0xA7000000
++//     DXE Heap         0xBAE00000    DXE_Heap         0xB8000000 + 0x1BA00000
++//
++// PrePi resolves "DXE Heap", "UEFI Stack" and "UEFI FD" from this table by
++// name, so a wrong layout does not merely mis-map memory: it hands PrePi the
++// wrong base for its own heap and for the firmware volume.  That mismatch is
++// where bring-up stopped (docs/bringup-log.md B17).
++//
++// The MMIO/register regions are unchanged because they already match the
++// device's device tree (scripts/extract_hw.py): QUP 0x00800000, TLMM 0x0F000000,
++// USB 0x0A600000, SMMU 0x15000000, APSS_HM 0x17000000 ...
++//
++
++STATIC
++ARM_MEMORY_REGION_DESCRIPTOR_EX
++gDeviceMemoryDescriptorEx[] = {
++  // Name, Address, Length, HobOption, ResourceType, ResourceAttribute, MemoryType, ArmAttribute
++
++  // ---- DDR reserved regions (from the XBL table) ----
++  {"RSRV0",             0x816E0000, 0x00320000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"XBL DT",            0x81A00000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
++  {"XBL Ramdump",       0x81A40000, 0x001C0000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"AOP",               0x81C00000, 0x000A0000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"UEFI Log",          0x81CE4000, 0x00010000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
++  {"SMEM",              0x81D00000, 0x00200000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"PvmFw",             0x824A0000, 0x00100000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"PIL Reserved",      0x8BC00000, 0x17580000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++  {"DBI Dump",          0xA6100000, 0x00F00000, NoHob,  MMAP_IO, INITIALIZED, Conv,   UNCACHED_UNBUFFERED_XN},
++
++  // ---- The firmware volume itself ----
++  // PrePi looks this up by name ("UEFI FD" / "UEFI_FD") and must describe where
++  // BootShim actually placed the image.  The volume is now built UNCOMPRESSED
++  // (~11 MB) so it no longer fits in the 4 MB the ABL reserved at 0xA7000000;
++  // it is carved out of the front of the DXE_Heap region instead, and the heap
++  // starts after it (see "DXE Heap" below).
++  {"UEFI FD",           0xBAB00000, 0x00E00000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
++
++  // ---- SEC/PrePi working regions ----
++  // These stay at the addresses the ABL reserved for them.
++  {"CPU Vectors",       0xA7600000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
++  {"Info Blk",          0xA7601000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
++  {"MMU PageTables",    0xA7602000, 0x00003000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++  {"Log Buffer",        0xA7605000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
++  {"UEFI Stack",        0xA760D000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++  {"SEC Heap",          0xA764D000, 0x0008C000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++  {"Sched Heap",        0xA76D9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++  {"FV Region",         0xA7AD9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++  {"UEFI RESV",         0xA7ED9000, 0x00127000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
++
++  // ---- Everything else the bootloader reserved ----
++  {"Kernel",            0xA8000000, 0x10000000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
++  {"DXE Heap",          0xBAC00000, 0x0C3E0000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
++  {"Display Reserved",  0xD5100000, 0x02B00000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN},
++  {"TZApps Reserved",   0xD8800000, 0x1B000000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
++
++  // ---- Other memory regions ----
++  {"IMEM Base",         0x14680000, 0x0002A000, NoHob,  MMAP_IO, INITIALIZED, Conv,   NS_DEVICE},
++  {"IMEM Cookie Base",  0x146AA000, 0x00016000, AddDev, MMAP_IO, INITIALIZED, Conv,   NS_DEVICE},
++
++  // ---- Register regions (unchanged: they match the device tree) ----
++  {"IPC_ROUTER_TOP",    0x00400000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"SECURITY CONTROL",  0x00780000, 0x00007000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"QUP",               0x00800000, 0x00300000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"PRNG_CFG_PRNG",     0x010C0000, 0x0000C000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"CRYPTO0 CRYPTO",    0x01DC0000, 0x00040000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"CORE_TOP_CSR",      0x01F00000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"PERIPH_SS",         0x08800000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"USB",               0x0A600000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"AOSS",              0x0B000000, 0x04000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"TLMM",              0x0F000000, 0x01000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"SMMU",              0x15000000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++  {"APSS_HM",           0x17000000, 0x02000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
++
++  // Terminator for MMU
++  {"Terminator", 0, 0, 0, 0, 0, 0, 0}
++};
++
++ARM_MEMORY_REGION_DESCRIPTOR_EX*
++GetDeviceMemoryMap ()
++{
++  return gDeviceMemoryDescriptorEx;
++}
+diff --git a/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.inf b/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.inf
+new file mode 100644
+index 0000000..696cb0f
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.inf
+@@ -0,0 +1,15 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = DeviceMemoryMapLib
++  FILE_GUID                      = 375C4FF0-1905-4BA7-A5CA-7D40D25F5EF3
++  MODULE_TYPE                    = BASE
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = DeviceMemoryMapLib
++
++[Sources]
++  DeviceMemoryMapLib.c
++
++[Packages]
++  ArmPkg/ArmPkg.dec
++  MdePkg/MdePkg.dec
++  SiliciumPkg/SiliciumPkg.dec
+diff --git a/Platforms/OnePlus/caihongPkg/RawFiles/uefiplat.cfg b/Platforms/OnePlus/caihongPkg/RawFiles/uefiplat.cfg
+new file mode 100644
+index 0000000..d94615d
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/RawFiles/uefiplat.cfg
+@@ -0,0 +1,206 @@
++[Config]
++Version = 3
++MaxMemoryRegions = 74
++
++[MemoryMap]
++#                                                    EFI_RESOURCE_ EFI_RESOURCE_ATTRIBUTE_ EFI_MEMORY_TYPE ARM_REGION_ATTRIBUTE_
++#MemBase,   MemSize,   MemLabel(32 Char.), BuildHob, ResourceType, ResourceAttribute, MemoryType, CacheAttributes
++#--------------------- DDR  -----
++0x80000000, 0x01200000, "NOMAP",             NoMap,  MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0x81200000, 0x00800000, "RSRV0",             AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN
++0x81A00000, 0x00040000, "XBL DT",            AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN
++0x81A40000, 0x001C0000, "XBL Ramdump",       AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0x81C00000, 0x000A0000, "AOP",               AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0x81D00000, 0x00200000, "SMEM",              AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0x81CE4000, 0x00010000, "UEFI Log",          AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0x8A800000, 0x18280000, "PIL Reserved",      AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0xA2A80000, 0x02B00000, "Display Demura",    AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN
++0xA6100000, 0x00F00000, "DBI Dump",          NoHob,  MMAP_IO, INITIALIZED, Conv,   UNCACHED_UNBUFFERED_XN
++0xBAB00000, 0x00E00000, "UEFI FD",           AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK
++0xA7400000, 0x00200000, "UEFI FD Reserved",  AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK
++0xA7600000, 0x00001000, "CPU Vectors",       AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK
++0xA7601000, 0x00001000, "Info Blk",          AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN
++0xA7602000, 0x00003000, "MMU PageTables",    AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN  
++0xA7605000, 0x00008000, "Log Buffer",        AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN      
++0xA760D000, 0x00040000, "UEFI Stack",        AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN
++0xA764D000, 0x0008C000, "SEC Heap",          AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN
++0xA76D9000, 0x00400000, "Sched Heap",        AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN
++0xA7AD9000, 0x00400000, "FV Region",         AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN
++0xA7ED9000, 0x00127000, "UEFI RESV",         AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN
++0xA8000000, 0x10000000, "Kernel",            AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN
++0xB8000000, 0x02B00000, "Display Reserved",  AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN
++0xBAC00000, 0x00C3E0000, "DXE Heap",          AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN
++0xD8800000, 0x07400000, "TZApps Reserved",   AddDynamicMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++0xFF800000, 0x00800000, "NOMAP",             NoMap,  MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN
++
++[RegisterMap]
++#--------------------- Other -----
++0x14680000, 0x0002A000, "IMEM Base",          NoHob,  MMAP_IO, INITIALIZED, Conv,   NS_DEVICE
++0x146AA000, 0x00016000, "IMEM Cookie Base",   AddDev, MMAP_IO, INITIALIZED, Conv,   NS_DEVICE
++#--------------------- Register --
++0x00400000, 0x00100000, "IPC_ROUTER_TOP",     AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x00780000, 0x00007000, "SECURITY CONTROL",   AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x00800000, 0x00300000, "QUP",                AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x010C0000, 0x0000C000, "PRNG_CFG_PRNG",      AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x01DC0000, 0x00040000, "CRYPTO0 CRYPTO",     AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x01F00000, 0x00100000, "CORE_TOP_CSR",       AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x08800000, 0x00100000, "PERIPH_SS",          AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x0A600000, 0x00200000, "USB",                AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x0B000000, 0x04000000, "AOSS",               AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x0F000000, 0x01000000, "TLMM",               AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x15000000, 0x00200000, "SMMU",               AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++0x17000000, 0x02000000, "APSS_HM",            AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE
++
++[ConfigParameters]
++# Update count if more than default 30 entries
++ConfigParameterCount = 64
++
++## UEFI CORE
++PlatConfigFileName = "uefiplatLA.cfg"
++OsTypeString = "LA"
++
++# Force booting to shell whilst in pre-silicon phase
++EnableShell = 0x1
++
++# Tune based on Sec heap needs for FV decompression and MMU tables through Dxe/BDS
++#ifdef OPLUS_FEATURE_LOGO
++#Ling.Guo@PSW.MM.Display.LCD.Stable,2019-09-03 modify size for logo custom
++SecPagePoolCount = 0x1800
++#else
++#SecPagePoolCount = 0x800
++#endif /* OPLUS_FEATURE_LOGO */
++
++# Shared IMEM (Cookies, Offsets)
++SharedIMEMBaseAddr    = 0x146AA000
++DloadCookieAddr = 0x01FD9000
++# for full dump 0x10, for minidump 0x20
++DloadCookieValue = 0x10
++
++# debug cookie of PIL subsystem, defined in FBC script
++PilSubsysDbgCookieAddr = 0x146AA6DC
++PilSubsysDbgCookieVal = 0x53444247
++
++# NumCpus - max number of cores
++NumCpus = 8
++# NumActiveCores - number of cores used
++NumActiveCores = 8
++
++## ULogFile
++SpecialLogPartition = "LOGFS:\"
++MaxLogFileSize = 0x400000
++
++# UEFI memory use
++UefiMemUseThreshold = 0xE1
++
++## USB ##
++USBHS1_Config = 0x0
++UsbFnIoRevNum = 0x00010001
++
++## Buttons / KeyPad ##
++PwrBtnShutdownFlag = 0x0
++
++## SDCC ##
++Sdc1GpioConfigOn = 0x1E92
++Sdc2GpioConfigOn = 0x1E92
++Sdc1GpioConfigOff = 0xA00
++Sdc2GpioConfigOff = 0xA00
++
++## SDHC Mode 0:Legacy Mode, Non-zero: SDHC Mode ##
++EnableSDHCSwitch = 0x1
++
++## UFS
++EnableUfsIOC = 1
++UfsSmmuConfigForOtherBootDev = 1
++
++## PCIE
++## PCIeRPNumber BIT 7:0  -> number of RPs to be enabled
++## PCIeRPNumber BIT 15:8 -> BIT mask to identify which RPs are enabled
++## Eg. value: 0x0502     -> Total two numbers of RPs, RP0 and RP2 are enabled
++## Total RPs supported 8 numbers and bits allocated are 16 bits
++#PCIeRPNumber=0x0101
++
++## Security flag ##
++SecurityFlag = 0xC4
++# SecBootEnableFlag = 0x1               i.e. 0b00000001
++# TreeTpmEnableFlag = 0x2               i.e. 0b00000010
++# CommonMbnLoadFlag = 0x4               i.e. 0b00000100
++# DxHdcp2LoadFlag = 0x8                 i.e. 0b00001000
++# VariableServicesFlag = 0x10           i.e. 0b00010000
++# WinsecappFlag = 0x20                  i.e. 0b00100000
++# LoadSecAppFlag = 0x40                 i.e. 0b01000000
++# LoadKeymasterFlag = 0x80              i.e. 0b10000000
++# EnableQseeLogsFlag = 0x100            i.e. 0b 00000001 00000000
++
++## Default app to boot in platform BDS init
++DefaultChargerApp = "QcomChargerApp"
++DefaultBDSBootApp = "LinuxLoader"
++
++## Enable HotKey detection in RETAIL devices
++DetectRetailUserAttentionHotkey = 0x00
++## 0x17 is SCAN_ESC
++DetectRetailUserAttentionHotkeyCode = 0x17
++## Enable OEM Setup App launch in Retail ##
++EnableOEMSetupAppInRetail = 0x0
++
++
++## LogFs partition
++## NOTE: Ensure logfs bin is flashed from /Tools/binaries ##
++EnableLogFsSyncInRetail = 0x0
++
++## NOTE: Enabling splash partition is a security risk ##
++#ifdef OPLUS_FEATURE_LOGO
++#Mark.Yao@PSW.MM.Display.LCD.Feature,2019-08-20 add for splash logo
++EnableSecurityHoleForSplashPartition = 0x1
++#else
++#EnableSecurityHoleForSplashPartition = 0x0
++#endif /* OPLUS_FEATURE_LOGO */
++
++## ShmBridge Memory Size
++ShmBridgememSize = 0xA00000
++
++##  Multithreading options
++EnableMultiThreading = 1
++MaxCoreCnt = 8
++# Keep the following number of cores active, including the boot core
++# For Early presilicon stage, this cna be set to 1 since we want to enable 
++# 1 core ie boot core
++EarlyInitCoreCnt = 1
++
++## Get TZ App Logs ##
++EnableUefiSecAppDebugLogDump = 0x0
++
++## Allow Non Persistent Varialbes in Retail ##
++## NOTE: Recommend disabling feature for Retail devices
++AllowNonPersistentVarsInRetail = 0x1
++
++# Initialize Display panel in its own thread to run in parallel to booting
++EnableDisplayThread = 0x1
++
++# Using imagefv to load display logo
++EnableDisplayImageFv = 0x0
++
++## Dynamic UART Log Buffer Size
++## Refer to QcomPkg/Docs/UefiLogBufferSizeConfigReadme.txt for usage
++#UARTLogBufferSize = 0x19000
++
++#DDRInfoDxe EnvDxe event callback flag
++DDRInfoNotifyFlag = 0x0
++
++#  FV Decompression on multicore option
++#  Value is 0 for early presilicon stage
++EnableMultiCoreFvDecompression = 0
++
++## Enable/Disable Variable Policy Engine ##
++EnableVariablePolicyEngine = 0
++
++## Allow individual ACPI tables loading ## 
++EnableACPIFallback = 0x0
++
++## Address to get Value of DRAM clock period MCCC_CLK_PERIOD
++DRAM_CLK_PERIOD_ADDR = 0x240BA050
++
++##Temp flag to load Auto Image in PIL
++LoadAutoImageInPILFlag = 0x1
++
++## NOTE: Do not remove last newline, required by parser ##
++
+diff --git a/Platforms/OnePlus/caihongPkg/caihong.dec b/Platforms/OnePlus/caihongPkg/caihong.dec
+new file mode 100644
+index 0000000..ca34628
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/caihong.dec
+@@ -0,0 +1,11 @@
++[Defines]
++  DEC_SPECIFICATION                   = 0x00010005
++  PACKAGE_NAME                        = caihongPkg
++  PACKAGE_GUID                        = 8E4F2A17-6C3B-4D5E-9A18-2F7B5C0D3E41
++  PACKAGE_VERSION                     = 0.1
++
++[Guids]
++  # Kept byte-compatible with the token space GUID that the copied library
++  # sources (DeviceGuidLib / DeviceConfigurationMapLib / DeviceMemoryMapLib)
++  # already reference, so the .dec stays self-consistent with them.
++  gcaihongTokenSpaceGuid              = { 0x2B8DA55C, 0xC899, 0xDE40, { 0xA7, 0xA5, 0x44, 0xC5, 0xDA, 0xAE, 0x24, 0xBD } }
+diff --git a/Platforms/OnePlus/caihongPkg/caihong.dsc b/Platforms/OnePlus/caihongPkg/caihong.dsc
+new file mode 100644
+index 0000000..611b604
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/caihong.dsc
+@@ -0,0 +1,183 @@
++##
++#  Copyright (c) 2011 - 2022, ARM Limited. All rights reserved.
++#  Copyright (c) 2014, Linaro Limited. All rights reserved.
++#  Copyright (c) 2015 - 2020, Intel Corporation. All rights reserved.
++#  Copyright (c) 2018, Bingxing Wang. All rights reserved.
++#  Copyright (c) Microsoft Corporation.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++#
++#  OnePlus Pad Pro (caihong / OPD2404) - Qualcomm SM8650 ("Cliffs")
++#
++#  Ported from astonPkg (OnePlus Ace 3, SM8550).  Values are either taken from
++#  this device's own firmware images (see the evidence notes inline) or are
++#  explicitly marked TODO because no first-party source establishes them.
++#
++#  Deliberate build gate
++#  ---------------------
++#  CAIHONG_ABL_ADDRESSES_VERIFIED must be set to 1 before this platform can
++#  link.  The ABL handover addresses (FV decompress address, CPU vector base,
++#  PrePi stack) live in the xbl/abl boot chain and cannot be derived from the
++#  device tree.  Emitting invented values here would produce firmware that
++#  silently corrupts memory on real hardware, so the port refuses to build
++#  instead.  See docs/bringup-log.md section "ABL handover" for the exact
++#  procedure that unlocks this gate.
++##
++
++################################################################################
++#
++# Defines Section - statements that will be processed to create a Makefile.
++#
++################################################################################
++[Defines]
++  PLATFORM_NAME                  = caihong
++  PLATFORM_GUID                  = 8E4F2A17-6C3B-4D5E-9A18-2F7B5C0D3E41
++  PLATFORM_VERSION               = 0.1
++  DSC_SPECIFICATION              = 0x00010005
++  OUTPUT_DIRECTORY               = Build/caihongPkg
++  SUPPORTED_ARCHITECTURES        = AARCH64
++  BUILD_TARGETS                  = RELEASE|DEBUG
++  SKUID_IDENTIFIER               = DEFAULT
++  FLASH_DEFINITION               = caihongPkg/caihong.fdf
++  USE_CUSTOM_DISPLAY_DRIVER      = 1
++  HAS_BUILD_IN_KEYBOARD          = 0
++
++  #
++  # 0 = SM8650-AB
++  # 1 = SM8650-AC
++  #
++  SOC_TYPE                       = 0
++
++  #
++  # ABL handover addresses: STATUS
++  #
++  # Recovered on 2026-10-29 from the device's own xbl_config.img XBL
++  # memory-region table (41 regions, see docs/abl-memory-map.json):
++  #   CPU_Vectors 0xA7600000 0x1000   -> PcdCpuVectorBaseAddress  (verified)
++  #   UEFI_Stack  0xA760D000 0x40000  -> PcdPrePiStackBase/Size   (verified)
++  #   FV_Region   0xA7AD9000 0x400000 -> PcdFvDecompressAddr      (inferred)
++  # The two ABL protocol pointers that could not be recovered are explicitly
++  # disabled in [PcdsFixedAtBuild] instead of being pointed at another
++  # device's addresses.
++  #
++  # NOTE: the former build-time guard (an error directive that fired whenever
++  # this flag was zero) was retired once the values above were established.
++  # It also had to leave the [Defines] section: the edk2toollib DSC parser
++  # rejects a comparison operator there with "stray operand".
++  # Keep this comment free of literal conditional tokens -- that parser scans
++  # comment lines too, so such tokens in prose break the build.
++  #
++  CAIHONG_ABL_ADDRESSES_VERIFIED = 1
++
++[BuildOptions]
++  #
++  # CAIHONG_BRINGUP_MARKERS enables the panel-as-progress-indicator
++  # instrumentation in Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c.  This device
++  # has no accessible UART, so during bring-up each PrePi milestone repaints the
++  # ABL display region a different colour; the colour left on screen when the
++  # device stops identifies the last milestone reached.
++  #
++  # Set to 0 (or drop the define) for a production build -- each marker writes
++  # 25 MB and is purely diagnostic.
++  #
++  *_*_*_CC_FLAGS = -DSOC_TYPE=$(SOC_TYPE) -DHAS_BUILD_IN_KEYBOARD=$(HAS_BUILD_IN_KEYBOARD) -DCAIHONG_BRINGUP_MARKERS=0
++
++[PcdsFixedAtBuild]
++  # DDR Start Address.  0x80000000 is the Qualcomm ARM64 DDR base and is used
++  # by every Mu-Qcom platform in this tree.  The runtime memory map itself is
++  # taken from the ABL InfoBlk, not from this PCD.
++  gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000
++
++  # Device Maintainer
++  gSiliciumPkgTokenSpaceGuid.PcdDeviceMaintainer|"caihong-windows bring-up"
++
++  # CPU Vector Address.
++  # 0xA7600000 is the ABL "CPU_Vectors" region (0x1000) recovered from this
++  # device's xbl_config.img.  See docs/abl-memory-map.json.
++  gArmTokenSpaceGuid.PcdCpuVectorBaseAddress|0xA7600000
++
++  # UEFI Stack Addresses.
++  # 0xA760D000 / 0x40000 is the ABL "UEFI_Stack" region recovered from this
++  # device's xbl_config.img -- an exact match, not an inheritance.
++  gEmbeddedTokenSpaceGuid.PcdPrePiStackBase|0xA760D000
++  gEmbeddedTokenSpaceGuid.PcdPrePiStackSize|0x00040000
++
++  # SmBios
++  #
++  # caihong has exactly ONE retail model (OPD2404), so TARGET_MULTIPLE_MODELS=0
++  # in Resources/Configs/caihong.conf and build_uefi.sh never passes -m.
++  # That matters: the DEVICE_MODEL build flag then arrives EMPTY, and a
++  # conditional comparison against it collapses to `!if  <op> 0`, which the
++  # edk2toollib parser rejects with "We have a stray operand".  The model
++  # selection is therefore unconditional instead of following the aston
++  # pattern (which works only because Ace 3 passes -m 0 / -m 1).
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemManufacturer|"OnePlus"
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemModel|"Pad Pro"
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailModel|"caihong"
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailSku|"OPD2404"
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosBoardModel|"Pad Pro"
++
++  # ---------------------------------------------------------------------------
++  # Simple Frame Buffer / GOP console geometry.
++  #
++  # The internal panel is 3000x2120 (from the device kernel cmdline:
++  # msm_drm.dsi_display0=qcom,mdss_dsi_panel_csot_nt36532_2120_3000_dual_dsc_144hz_vid).
++  # The framebuffer is driven by the SM8650 MDSS in the mode the bootloader
++  # leaves it in; the resolution below is the native panel mode.
++  # TODO: the actual stride/format handed over by the bootloader must be
++  # confirmed on hardware before a GOP blit is trusted.
++  # ---------------------------------------------------------------------------
++  gSiliciumPkgTokenSpaceGuid.PcdPrimaryFrameBufferWidth|3000
++  gSiliciumPkgTokenSpaceGuid.PcdPrimaryFrameBufferHeight|2120
++  gSiliciumPkgTokenSpaceGuid.PcdPrimaryFrameBufferColorDepth|32
++
++  # Platform Pei
++  gQcomPkgTokenSpaceGuid.PcdPlatformType|"LA"
++
++  # ---------------------------------------------------------------------------
++  # ABL protocol pointers -- DELIBERATELY LEFT AT ZERO.
++  #
++  # PlatformHobLib.c publishes these only `if (SchedAddress)` / `if
++  # (DtbExtAddress)`, treating them as pointers to protocols that the ABL has
++  # already placed in memory (EFI_KERNEL_PROTOCOL / EFI_DTB_EXTN_PROTOCOL).
++  # The XBL region table recovered from this device (docs/abl-memory-map.json)
++  # contains no entry that can be identified as either structure, and the
++  # upstream SM8550 package's values (0xA703A0C8 / 0xA703A950) are OnePlus
++  # Ace 3-specific addresses inside *that* device's UEFI_FD region.
++  #
++  # Pointing at another device's addresses would make the firmware treat
++  # arbitrary memory as a protocol vtable -- a silent crash on real hardware.
++  # Zero disables both HOBs, which is the only evidence-supported choice.
++  # Cost: features that consume the ABL schedule interface / DTB extension are
++  # simply not populated.  TODO: recover the real values from the device.
++  # ---------------------------------------------------------------------------
++  gQcomPkgTokenSpaceGuid.PcdDtbExtensionAddr|0x0
++  gQcomPkgTokenSpaceGuid.PcdScheduleInterfaceAddr|0x0
++
++  # Dynamic RAM Start Address
++  gQcomPkgTokenSpaceGuid.PcdRamPartitionBase|0x880000000
++
++  # SD Card Slot - the Pad Pro has no SD slot.
++  gQcomPkgTokenSpaceGuid.PcdInitCardSlot|FALSE
++
++  # USB Controller
++  gQcomPkgTokenSpaceGuid.PcdStartUsbController|TRUE
++
++[PcdsDynamicDefault]
++  # Console geometry for 3000x2120 at an 8x16 glyph cell.
++  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoHorizontalResolution|3000
++  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution|2120
++  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoHorizontalResolution|3000
++  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoVerticalResolution|2120
++  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupConOutColumn|375
++  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupConOutRow|132
++  gEfiMdeModulePkgTokenSpaceGuid.PcdConOutColumn|375
++  gEfiMdeModulePkgTokenSpaceGuid.PcdConOutRow|132
++
++[LibraryClasses]
++  DeviceMemoryMapLib|caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.inf
++  DeviceConfigurationMapLib|caihongPkg/Library/DeviceConfigurationMapLib/DeviceConfigurationMapLib.inf
++  DeviceGuidLib|caihongPkg/Library/DeviceGuidLib/DeviceGuidLib.inf
++  AcpiDeviceUpdateLib|SiliciumPkg/Library/AcpiDeviceUpdateLibNull/AcpiDeviceUpdateLibNull.inf
++
++!include CliffsPkg/CliffsPkg.dsc.inc
+diff --git a/Platforms/OnePlus/caihongPkg/caihong.fdf b/Platforms/OnePlus/caihongPkg/caihong.fdf
+new file mode 100644
+index 0000000..937c394
+--- /dev/null
++++ b/Platforms/OnePlus/caihongPkg/caihong.fdf
+@@ -0,0 +1,152 @@
++##
++#  Copyright (c) 2018, Linaro Limited. All rights reserved.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++##
++
++################################################################################
++#
++# FD Section
++# The [FD] Section is made up of the definition statements and a
++# description of what goes into  the Flash Device Image.  Each FD section
++# defines one flash "device" image.  A flash device image may be one of
++# the following: Removable media bootable image (like a boot floppy
++# image,) an Option ROM image (that would be "flashed" into an add-in
++# card,) a System "Flash"  image (that would be burned into a system's
++# flash) or an Update ("Capsule") image that will be used to update and
++# existing system flash.
++#
++################################################################################
++
++[FD.caihong_UEFI]
++BaseAddress   = $(FD_BASE)|gArmTokenSpaceGuid.PcdFdBaseAddress # The base address of the FLASH Device.
++Size          = $(FD_SIZE)|gArmTokenSpaceGuid.PcdFdSize        # The size in bytes of the FLASH Device
++ErasePolarity = 1
++
++# This one is tricky, it must be: BlockSize * NumBlocks = Size
++BlockSize     = 0x1000
++NumBlocks     = $(FD_BLOCKS)
++
++################################################################################
++#
++# Following are lists of FD Region layout which correspond to the locations of different
++# images within the flash device.
++#
++# Regions must be defined in ascending order and may not overlap.
++#
++# A Layout Region start with a eight digit hex offset (leading "0x" required) followed by
++# the pipe "|" character, followed by the size of the region, also in hex with the leading
++# "0x" characters. Like:
++# Offset|Size
++# PcdOffsetCName|PcdSizeCName
++# RegionType <FV, DATA, or FILE>
++#
++################################################################################
++
++0x00000000|$(FD_SIZE)
++gArmTokenSpaceGuid.PcdFvBaseAddress|gArmTokenSpaceGuid.PcdFvSize
++FV = FVMAIN_COMPACT
++
++################################################################################
++#
++# FV Section
++#
++# [FV] section is used to define what components or modules are placed within a flash
++# device file.  This section also defines order the components and modules are positioned
++# within the image.  The [FV] section consists of define statements, set statements and
++# module statements.
++#
++################################################################################
++
++[FV.FvMain]
++FvNameGuid         = 631008B0-B2D1-410A-8B49-2C5C4D8ECC7E
++BlockSize          = 0x1000
++NumBlocks          = 0        # This FV gets compressed so make it just big enough
++FvAlignment        = 8        # FV alignment and FV attributes setting.
++ERASE_POLARITY     = 1
++MEMORY_MAPPED      = TRUE
++STICKY_WRITE       = TRUE
++LOCK_CAP           = TRUE
++LOCK_STATUS        = TRUE
++WRITE_DISABLED_CAP = TRUE
++WRITE_ENABLED_CAP  = TRUE
++WRITE_STATUS       = TRUE
++WRITE_LOCK_CAP     = TRUE
++WRITE_LOCK_STATUS  = TRUE
++READ_DISABLED_CAP  = TRUE
++READ_ENABLED_CAP   = TRUE
++READ_STATUS        = TRUE
++READ_LOCK_CAP      = TRUE
++READ_LOCK_STATUS   = TRUE
++
++  !include Include/APRIORI.inc
++  !include Include/DXE.inc
++  !include Include/RAW.inc
++
++  # SmBios
++  INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
++  INF QcomPkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf
++
++  # ACPI
++  INF MdeModulePkg/Universal/Acpi/AcpiTableDxe/AcpiTableDxe.inf
++  INF MdeModulePkg/Universal/Acpi/AcpiPlatformDxe/AcpiPlatformDxe.inf
++  !include Include/ACPI.inc
++
++  # Device Tree
++  #INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
++  #FILE FREEFORM = 25462CDA-221F-47DF-AC1D-259CFAA4E326 {
++  #  SECTION RAW = caihongPkg/FdtBlob/sm8550-oneplus-caihong.dtb
++  #  SECTION UI = "DeviceTreeBlob"
++  #}
++
++  !include QcomPkg/Extra.fdf.inc
++
++[FV.FVMAIN_COMPACT]
++FvAlignment        = 8
++ERASE_POLARITY     = 1
++MEMORY_MAPPED      = TRUE
++STICKY_WRITE       = TRUE
++LOCK_CAP           = TRUE
++LOCK_STATUS        = TRUE
++WRITE_DISABLED_CAP = TRUE
++WRITE_ENABLED_CAP  = TRUE
++WRITE_STATUS       = TRUE
++WRITE_LOCK_CAP     = TRUE
++WRITE_LOCK_STATUS  = TRUE
++READ_DISABLED_CAP  = TRUE
++READ_ENABLED_CAP   = TRUE
++READ_STATUS        = TRUE
++READ_LOCK_CAP      = TRUE
++READ_LOCK_STATUS   = TRUE
++
++  INF SiliciumPkg/PrePi/PrePi.inf
++
++  FILE FREEFORM = DDE58710-41CD-4306-DBFB-3FA90BB1D2DD {
++    SECTION UI = "uefiplat.cfg"
++    SECTION RAW = Platforms/OnePlus/caihongPkg/RawFiles/uefiplat.cfg
++  }
++
++  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
++    #
++    # caihong: the inner volume is stored UNCOMPRESSED.
++    #
++    # Upstream wraps it in a GUIDed LZMA section
++    # (SECTION GUIDED EE4E5898-3914-4259-9D6E-DC7BD79403CF PROCESSING_REQUIRED
++    # = TRUE).  On this device PrePi can parse that section but cannot decode
++    # it: ExtractGuidedSectionGetInfo() returns EFI_SUCCESS while
++    # ExtractGuidedSectionDecode() fails with EFI_INVALID_PARAMETER, and
++    # FfsProcessSection() reports both as EFI_NOT_FOUND.  See
++    # docs/bringup-log.md B18/B19 for the panel-probe evidence.
++    #
++    # Storing the volume unwrapped removes the guided-section path entirely:
++    # FfsProcessSection() finds the EFI_SECTION_FIRMWARE_VOLUME_IMAGE directly
++    # and FfsProcessFvFile() just publishes it, with no decoder involved.
++    #
++    # Cost: the volume is ~11 MB instead of ~1.2 MB, so TARGET_FD_BASE/SIZE
++    # moved from 0xA7000000/4 MB to 0xB8000000/12 MB (the front of the ABL
++    # DXE_Heap region); the heap now starts at 0xB8C00000.
++    #
++    SECTION FV_IMAGE = FVMAIN
++  }
++
++  !include SiliciumPkg/Common.fdf.inc
+diff --git a/Resources/Configs/caihong.conf b/Resources/Configs/caihong.conf
+new file mode 100644
+index 0000000..628d5fb
+--- /dev/null
++++ b/Resources/Configs/caihong.conf
+@@ -0,0 +1,44 @@
++# Build configuration for OnePlus Pad Pro (caihong / OPD2404), SM8650 "Cliffs"
++#
++# Consumed by build_uefi.sh, which sources Resources/Configs/<device>.conf.
++#
++# NOTE ON TARGET_FD_BASE
++# ----------------------
++# When TARGET_REQUIRES_BOOTSHIM=1, BootShim decides where the UEFI firmware
++# volume is relocated to.
++#
++# HISTORY
++#   The ABL reserves 0xA7000000 + 0x400000 for UEFI_FD, and the port originally
++#   used exactly that.  4 MB is only enough while the inner firmware volume is
++#   compressed, and PrePi cannot decompress this platform's volume (the GUIDed
++#   LZMA decode fails -- see docs/bringup-log.md B19).  So the volume is now
++#   built UNCOMPRESSED, which needs ~11 MB.
++#
++# CURRENT CHOICE
++#   0xB8000000 -- the base of the ABL "DXE_Heap" region (0xB8000000 +
++#   0x1BA00000, 452 MB of ordinary DRAM reserved for UEFI).  The firmware takes
++#   the first 12 MB and the DXE heap is moved up to 0xB8C00000; see the "UEFI FD"
++#   and "DXE Heap" entries in
++#   Platforms/OnePlus/caihongPkg/Library/DeviceMemoryMapLib/DeviceMemoryMapLib.c.
++#
++#   This region is NOT where ABL loaded our boot image from (that is the
++#   "Kernel" region at 0xA8000000), so the BootShim copy does not overlap its
++#   own source.
++
++# General Configs
++TARGET_DEVICE_VENDOR="OnePlus"
++TARGET_MULTIPLE_MODELS=0
++TARGET_NUMBER_OF_MODELS=1
++
++# BootShim Configs
++TARGET_REQUIRES_BOOTSHIM=1
++TARGET_FD_BASE=0xBAB00000
++TARGET_FD_SIZE=0x00E00000
++TARGET_FD_BLOCKS=0xE00
++
++# FDT Configs
++# Windows on ARM does not consume a device tree; the firmware describes the
++# hardware through ACPI (see acpi/caihong/ and Silicium-ACPI), so no FDT
++# pointer is created.
++TARGET_CREATE_POINTER=0
++TARGET_POINTER_ADDRESS=0x0
+diff --git a/Resources/Scripts/caihong.sh b/Resources/Scripts/caihong.sh
+new file mode 100644
+index 0000000..e11c96c
+--- /dev/null
++++ b/Resources/Scripts/caihong.sh
+@@ -0,0 +1,75 @@
++#!/bin/bash
++#
++# Assemble the flashable payload for the OnePlus Pad Pro (caihong / SM8650).
++#
++# Sourced by build_uefi.sh after a successful firmware link:
++#   if [ -f "Resources/Scripts/${TARGET_DEVICE}.sh" ]; then source ...; fi
++#
++# This script ONLY assembles a file.  It never touches the device: no fastboot,
++# no adb, no partition writes.  Flashing is a separate, manual, human-confirmed
++# step documented in docs/recovery.md.
++#
++# What it produces
++#   Mu-caihong-<model>-Model.img   Android boot image (header v1) containing
++#                                  BootShim + the UEFI firmware volume
++#
++# Memory layout
++#   BootShim is prepended so that ABL's normal "boot the kernel" path actually
++#   starts our UEFI.  BootShim relocates itself and jumps to the FD base that
++#   was compiled into it (TARGET_FD_BASE from Resources/Configs/caihong.conf).
++#
++# Deliberate deviation from the other devices: no device tree is appended.
++#   Every other Resources/Scripts/<device>.sh concatenates
++#   ./Resources/DTBs/<device>.dtb.  There is no verified *standalone* board DTB
++#   for caihong: the board description ships as overlay entry index 7 inside
++#   dtbo.img and only merges onto the SoC DTB carried in vendor_boot.img, and
++#   the Linux project delivers its DTB inside its own boot image rather than as
++#   a reusable file.  Appending the SoC-only DTB (work/dt/vendor_boot/vendor.dtb)
++#   would hand ABL a tree with board-id <0 0> instead of <8 0>, so it is not
++#   done here.  On the real device ABL continues to apply the stock dtbo, which
++#   is exactly what the stock boot flow does.
++#   TODO: revisit once a dump of the running device's merged DTB exists.
++
++set -u
++
++BUILD_MODE="${TARGET_BUILD_MODE:-RELEASE}"
++PKG_DIR="./Build/caihongPkg/${BUILD_MODE}_CLANGPDB/FV"
++FD="${PKG_DIR}/CAIHONG_UEFI.fd"
++SHIM="./BootShim/BootShim.bin"
++OUT="Mu-caihong-${TARGET_DEVICE_MODEL:-0}-Model.img"
++
++fail() { echo "caihong.sh: $*" >&2; return 1; }
++
++[ -f "$FD" ]   || { fail "firmware volume not found: $FD"; return 1; }
++[ -f "$SHIM" ] || { fail "BootShim not built: $SHIM"; return 1; }
++[ -s "$SHIM" ] || { fail "BootShim is empty: $SHIM"; return 1; }
++
++echo "== caihong: assembling boot payload"
++echo "   fd     : $FD ($(wc -c < "$FD") bytes)"
++echo "   bootshim: $SHIM ($(wc -c < "$SHIM") bytes)"
++
++cat "$SHIM" "$FD" > "${FD}-bootshim" || { fail "concat failed"; return 1; }
++gzip -c < "${FD}-bootshim" > "${FD}-bootshim.gz" || { fail "gzip failed"; return 1; }
++cp "${FD}-bootshim.gz" ./Resources/bootpayload.bin || { fail "copy failed"; return 1; }
++
++# mkbootimg.py must exist in the checkout; it is part of Resources/Scripts.
++if [ ! -f ./Resources/Scripts/mkbootimg.py ]; then
++	fail "Resources/Scripts/mkbootimg.py missing; cannot package a boot image"
++	return 1
++fi
++[ -f ./Resources/ramdisk ] || { fail "Resources/ramdisk missing"; return 1; }
++
++python3 ./Resources/Scripts/mkbootimg.py \
++  --kernel ./Resources/bootpayload.bin \
++  --ramdisk ./Resources/ramdisk \
++  --kernel_offset 0x00000000 \
++  --ramdisk_offset 0x00000000 \
++  --tags_offset 0x00000000 \
++  --os_version 13.0.0 \
++  --os_patch_level "$(date '+%Y-%m')" \
++  --header_version 1 \
++  -o "$OUT" \
++  || { fail "mkbootimg failed"; return 1; }
++
++echo "== caihong: wrote $OUT ($(wc -c < "$OUT") bytes)"
++echo "== NOT FLASHED. Read docs/recovery.md before doing anything with this file."
+diff --git a/Silicon/Qualcomm/CliffsPkg/CliffsPkg.dsc.inc b/Silicon/Qualcomm/CliffsPkg/CliffsPkg.dsc.inc
+new file mode 100644
+index 0000000..3d9e785
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/CliffsPkg.dsc.inc
+@@ -0,0 +1,132 @@
++##
++#  Copyright (c) 2011 - 2022, ARM Limited. All rights reserved.
++#  Copyright (c) 2014, Linaro Limited. All rights reserved.
++#  Copyright (c) 2015 - 2020, Intel Corporation. All rights reserved.
++#  Copyright (c) 2018, Bingxing Wang. All rights reserved.
++#  Copyright (c) Microsoft Corporation.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++#
++#  Qualcomm SM8650 ("Cliffs") SoC package - OnePlus Pad Pro (caihong) port.
++#
++#  Derived from KailuaPkg.dsc.inc (SM8550, "Snapdragon 8 Gen 2").  Every value
++#  that was changed is annotated with the evidence that justifies it; values
++#  that could not be verified from this device's firmware are left inherited
++#  and explicitly flagged with TODO.
++#
++#  EVIDENCE BASE
++#  -------------
++#  Device: OnePlus Pad Pro (caihong / OPD2404), SM8650.
++#  Sources: dtbo.img (active entry index 7) and the vendor_boot.img vendor DTB,
++#  both extracted with scripts/extract_dtb.py.  Reproduce with
++#  scripts/extract_hw.py.
++#
++#  SM8550 vs SM8650 - what is actually identical (independently verified)
++#    GIC distributor      0x17100000   (SM8650 vendor DTB intc@17100000)
++#    GIC redistributor    0x17180000   (size 0x200000 in the SM8650 DTB)
++#    Arch timer frequency 19200000 Hz  (SM8650 DTB timer clock-frequency)
++#    Timer GSIVs          29 / 30      (SM8650 DTB PPIs 13/14 => 16 + PPI)
++#    CPU count / clusters 8 / 3        (SM8650 DTB qcom,cpuidle-domain map)
++#  scripts/build_soc_acpi.py hard-asserts these before deriving the SM8650
++#  ACPI tables, so a future upstream change cannot silently invalidate them.
++##
++
++[Defines]
++  # GIC
++  USE_CUSTOM_GIC                             = 0
++
++  # Timer
++  USE_CUSTOM_TIMER                           = 0
++  USE_PHYSICAL_TIMER                         = 0
++
++  # KEP (Kernel Errata Patcher, ArmPkg)
++  ENABLE_KEP                                 = 1
++  HAS_ACTLR_EL1_UNIMPLEMENTED_ERRATA         = 1
++  HAS_AMCNTENSET0_EL0_UNIMPLEMENTED_ERRATA   = 1
++  HAS_GIC_V3_WITHOUT_IRM_FLAG_SUPPORT_ERRATA = 1
++  HAS_PSCI_MEMPROTECT_FAILING_ERRATA         = 0
++
++[BuildOptions]
++  # SM8650 cores are ARMv9.2-A (Cortex-X4 / Cortex-A720 / Cortex-A520).
++  # armv9-a+crypto+rcpc is the conservative subset used by the SM8550 package
++  # and is accepted by all three core types; deliberately not raised to
++  # armv9.2-a until boot has been proven on hardware.
++  *_*_AARCH64_CC_FLAGS = -march=armv9-a+crypto+rcpc
++
++[PcdsFixedAtBuild]
++  # Platform Pei HOBs
++  gQcomPkgTokenSpaceGuid.PcdEnableInfoBlkHob|TRUE
++  gQcomPkgTokenSpaceGuid.PcdEnableShimHob|TRUE
++  gQcomPkgTokenSpaceGuid.PcdEnableProdmodeHob|TRUE
++
++  # ---------------------------------------------------------------------------
++  # FV decompress address = the ABL's "FV_Region".
++  #
++  # RECOVERED FROM THE DEVICE, not guessed: xbl_config.img contains an XBL
++  # memory-region table (41 entries, see docs/abl-memory-map.json) in which
++  # FV_Region = 0xA7AD9000, size 0x400000 (4 MB).  PlatformHobLib publishes
++  # this as gFvDecompressHobGuid when non-zero.
++  #
++  # CAVEAT: it is an *inference* that "FV_Region" is what this PCD means.
++  # The upstream SM8550 package sets 0xA703A0C8, which lies inside its
++  # UEFI_FD region rather than in its FV region, so the two ports may be
++  # interpreting the PCD differently.  If DxeCore reports
++  # "Dxe Core FV decompression failed" on hardware, this is the first value to
++  # revisit.  Tracked in docs/bringup-log.md B11.2.
++  # ---------------------------------------------------------------------------
++  gQcomPkgTokenSpaceGuid.PcdFvDecompressAddr|0xA7AD9000
++
++  # CPU.  8 cores in 3 clusters: the SM8650 vendor DTB's
++  # qcom,cpuidle-domain cpu-map declares cluster sizes 3 / 4 / 1.
++  gArmPlatformTokenSpaceGuid.PcdCoreCount|8
++  gArmPlatformTokenSpaceGuid.PcdClusterCount|3
++
++  # GICv3.  Distributor 0x17100000 and redistributor 0x17180000 come directly
++  # from the SM8650 vendor DTB interrupt-controller node.
++  # PcdGicInterruptInterfaceBase is consumed only by the GICv2 driver; for
++  # GICv3 system-register mode it is inert, so it is kept at the SM8550 value
++  # rather than invented.
++  gArmTokenSpaceGuid.PcdGicDistributorBase|0x17100000
++  gArmTokenSpaceGuid.PcdGicRedistributorsBase|0x17180000
++  gArmTokenSpaceGuid.PcdGicInterruptInterfaceBase|0x17140000
++
++  # Timer.  19200000 Hz and GSIV 29/30 read from the SM8650 vendor DTB
++  # (timer clock-frequency; PPIs 13 and 14).
++  gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz|19200000
++  gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum|29
++  gArmTokenSpaceGuid.PcdArmArchTimerIntrNum|30
++
++  # SmBios
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosProcessorModel|"Snapdragon (TM) 8 Gen 3"
++  # caihong reports ro.board.platform=pineapple and 8 cores.
++!if $(SOC_TYPE) == 0
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosProcessorPartNumber|"SM8650-AB"
++!elseif $(SOC_TYPE) == 1
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosProcessorPartNumber|"SM8650-AC"
++!endif
++
++  # SmBios CPU Extras
++  # 3302 MHz comes from the caihong Linux project documentation, which states
++  # the 3.3024 GHz boost clock and that it is disabled by default.
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosMaxCpuFreq|3302
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosLevel1InstCacheSize|0x40
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosLevel1DataCacheSize|0x40
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosLevel2CacheSize|0x400
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosLevel3CacheSize|0x2000   # TODO unverified
++
++  # SmBios Memory Extras
++  # TODO unverified for this device.  The SM8650 reference platform uses
++  # LPDDR5X; the populated speed on caihong is not known from any source
++  # available here.  Cosmetic only (SMBIOS type 17), does not affect boot.
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosMemorySpeed|8533
++  gSiliciumPkgTokenSpaceGuid.PcdSmbiosMemoryType|35
++
++[LibraryClasses]
++  PlatformPrePiLib|CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.inf
++  RFSProtectionLib|CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.inf
++  AcpiPlatformUpdateLib|CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.inf
++  HwResetSystemLib|ArmPkg/Library/ArmSmcPsciResetSystemLib/ArmSmcPsciResetSystemLib.inf
++  ResetSystemLib|ArmPkg/Library/ArmSmcPsciResetSystemLib/ArmSmcPsciResetSystemLib.inf
++  SoCPlatformLib|CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.inf
++
++!include QcomPkg/QcomPkg.dsc.inc
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.c b/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.c
+new file mode 100644
+index 0000000..e02321c
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.c
+@@ -0,0 +1,118 @@
++#include <Library/AslUpdateLib.h>
++#include <Library/MemoryMapHelperLib.h>
++#include <Library/UefiBootServicesTableLib.h>
++#include <Library/RFSProtectionLib.h>
++
++#include <Protocol/EFIChipInfo.h>
++#include <Protocol/EFIPlatformInfo.h>
++#include <Protocol/EFISmem.h>
++
++VOID
++PlatformUpdateAcpiTables ()
++{
++  EFI_STATUS                          Status;
++  ARM_MEMORY_REGION_DESCRIPTOR_EX     MPSSEFSRegion;
++  ARM_MEMORY_REGION_DESCRIPTOR_EX     ADSPEFSRegion;
++  EFI_CHIPINFO_PROTOCOL              *mChipInfoProtocol;
++  EFI_PLATFORMINFO_PROTOCOL          *mPlatformInfoProtocol;
++  EFI_SMEM_PROTOCOL                  *mSmemProtocol;
++  EFI_PLATFORMINFO_PLATFORM_INFO_TYPE PlatformInfo;
++
++  UINT32 SOID                            = 0;
++  UINT32 STOR                            = 0x1;
++  UINT32 SIDV                            = 0;
++  UINT16 SDFE                            = 0;
++  UINT16 SIDM                            = 0;
++  UINT32 SUFS                            = 0xFFFFFFFF;
++  UINT32 PUS3                            = 0x1;
++  UINT32 SUS3                            = 0xFFFFFFFF;
++  UINT32 SOSN1                           = 0;
++  UINT32 SOSN2                           = 0;
++  UINT32 TPMA                            = 0x1;
++  UINT32 TDTV                            = 0x6654504D;
++  UINT64 SOSI                            = 0;
++  UINT32 PRP0                            = 0;
++  UINT32 PRP1                            = 0;
++  CHAR8  SIDS[EFICHIPINFO_MAX_ID_LENGTH] = {0};
++  UINT32 RMTB                            = 0;
++  UINT32 RMTX                            = 0;
++  UINT32 RFMB                            = 0;
++  UINT32 RFMS                            = 0;
++  UINT32 RFAB                            = 0;
++  UINT32 RFAS                            = 0;
++  UINT32 TCMA                            = 0;
++  UINT32 TCML                            = 0;
++  UINT32 SmemSize                        = 0;
++
++  // Locate Chip Info Protocol
++  Status  = gBS->LocateProtocol (&gEfiChipInfoProtocolGuid, NULL, (VOID *)&mChipInfoProtocol);
++
++  // Locate SMEM Protocol
++  Status |= gBS->LocateProtocol (&gEfiSMEMProtocolGuid, NULL, (VOID *)&mSmemProtocol);
++
++  // Locate Platform Info Protocol
++  Status |= gBS->LocateProtocol (&gEfiPlatformInfoProtocolGuid, NULL, (VOID *)&mPlatformInfoProtocol);
++
++  if (EFI_ERROR (Status)) {
++    return;
++  }
++
++  mChipInfoProtocol->GetChipId       (mChipInfoProtocol, (EFIChipInfoIdType *)&SOID);
++  mChipInfoProtocol->GetChipVersion  (mChipInfoProtocol, &SIDV);
++  mChipInfoProtocol->GetChipFamily   (mChipInfoProtocol, (EFIChipInfoFamilyType *)&SDFE);
++  mChipInfoProtocol->GetModemSupport (mChipInfoProtocol, (EFIChipInfoModemType *)&SIDM);
++  mChipInfoProtocol->GetSerialNumber (mChipInfoProtocol, (EFIChipInfoSerialNumType *)&SOSN1);
++  mChipInfoProtocol->GetQFPROMChipId (mChipInfoProtocol, (EFIChipInfoQFPROMChipIdType *)&SOSN2);
++  mChipInfoProtocol->GetChipIdString (mChipInfoProtocol, SIDS, EFICHIPINFO_MAX_ID_LENGTH);
++
++  mSmemProtocol->GetFunc (137, &SmemSize, (VOID *)&SOSI);
++
++  mPlatformInfoProtocol->GetPlatformInfo (mPlatformInfoProtocol, &PlatformInfo);
++
++  UINT16 SVMJ = (UINT16)((SIDV >> 16) & 0xFFFF);
++  UINT16 SVMI = (UINT16)(SIDV & 0xFFFF);
++  UINT64 SOSN = ((UINT64)SOSN2 << 32) | SOSN1;
++  UINT32 PLST = PlatformInfo.subtype;
++
++  if (!EFI_ERROR (LocateMemoryMapAreaByName ("MPSS_EFS", &MPSSEFSRegion))) {
++    RMTB = MPSSEFSRegion.Address;
++    RMTX = MPSSEFSRegion.Length;
++
++    // Configure MPSS Permissions
++    RFSLocateAndProtectSharedArea ();
++  }
++
++  if (!EFI_ERROR (LocateMemoryMapAreaByName ("ADSP_EFS", &ADSPEFSRegion))) {
++    RFMB = (UINT32)ADSPEFSRegion.Address + (UINT32)ADSPEFSRegion.Length / 2;
++    RFMS = (UINT32)ADSPEFSRegion.Length / 2;
++    RFAB = (UINT32)ADSPEFSRegion.Address;
++    RFAS = (UINT32)ADSPEFSRegion.Length / 2;
++  }
++
++  UpdateNameAslCode (SIGNATURE_32('S', 'O', 'I', 'D'), &SOID, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'T', 'O', 'R'), &STOR, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'I', 'D', 'V'), &SIDV, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'V', 'M', 'J'), &SVMJ, 2);
++  UpdateNameAslCode (SIGNATURE_32('S', 'V', 'M', 'I'), &SVMI, 2);
++  UpdateNameAslCode (SIGNATURE_32('S', 'D', 'F', 'E'), &SDFE, 2);
++  UpdateNameAslCode (SIGNATURE_32('S', 'I', 'D', 'M'), &SIDM, 2);
++  UpdateNameAslCode (SIGNATURE_32('S', 'U', 'F', 'S'), &SUFS, 4);
++  UpdateNameAslCode (SIGNATURE_32('P', 'U', 'S', '3'), &PUS3, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'U', 'S', '3'), &SUS3, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'O', 'S', 'N'), &SOSN, 8);
++  UpdateNameAslCode (SIGNATURE_32('P', 'L', 'S', 'T'), &PLST, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'M', 'T', 'B'), &RMTB, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'M', 'T', 'X'), &RMTX, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'F', 'M', 'B'), &RFMB, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'F', 'M', 'S'), &RFMS, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'F', 'A', 'B'), &RFAB, 4);
++  UpdateNameAslCode (SIGNATURE_32('R', 'F', 'A', 'S'), &RFAS, 4);
++  UpdateNameAslCode (SIGNATURE_32('T', 'P', 'M', 'A'), &TPMA, 4);
++  UpdateNameAslCode (SIGNATURE_32('T', 'D', 'T', 'V'), &TDTV, 4);
++  UpdateNameAslCode (SIGNATURE_32('T', 'C', 'M', 'A'), &TCMA, 4);
++  UpdateNameAslCode (SIGNATURE_32('T', 'C', 'M', 'L'), &TCML, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'O', 'S', 'I'), &SOSI, 8);
++  UpdateNameAslCode (SIGNATURE_32('P', 'R', 'P', '0'), &PRP0, 4);
++  UpdateNameAslCode (SIGNATURE_32('P', 'R', 'P', '1'), &PRP1, 4);
++  UpdateNameAslCode (SIGNATURE_32('S', 'I', 'D', 'S'), &SIDS, EFICHIPINFO_MAX_ID_LENGTH);
++}
+\ No newline at end of file
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.inf b/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.inf
+new file mode 100644
+index 0000000..370fc8a
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/AcpiPlatformUpdateLib/AcpiPlatformUpdateLib.inf
+@@ -0,0 +1,27 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = AcpiPlatformUpdateLib
++  FILE_GUID                      = 2FDF4E63-5AD5-4385-A729-868019B45A99
++  MODULE_TYPE                    = DXE_DRIVER
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = AcpiPlatformUpdateLib|DXE_DRIVER DXE_RUNTIME_DRIVER UEFI_APPLICATION
++
++[Sources]
++  AcpiPlatformUpdateLib.c
++
++[Packages]
++  ArmPkg/ArmPkg.dec
++  MdePkg/MdePkg.dec
++  QcomPkg/QcomPkg.dec
++  SiliciumPkg/SiliciumPkg.dec
++
++[LibraryClasses]
++  UefiBootServicesTableLib
++  AslUpdateLib
++  MemoryMapHelperLib
++  RFSProtectionLib
++
++[Protocols]
++  gEfiChipInfoProtocolGuid
++  gEfiSMEMProtocolGuid
++  gEfiPlatformInfoProtocolGuid
+\ No newline at end of file
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/AArch64/PlatformPrePiLib.S b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/AArch64/PlatformPrePiLib.S
+new file mode 100644
+index 0000000..5bb9b40
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/AArch64/PlatformPrePiLib.S
+@@ -0,0 +1,4 @@
++#include <AsmMacroIoLibV8.h>
++
++ASM_FUNC (PlaformAssemblyInit)
++  ret
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.c b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.c
+new file mode 100644
+index 0000000..891c326
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.c
+@@ -0,0 +1,12 @@
++#include <Library/IoLib.h>
++#include <Library/PlatformPrePiLib.h>
++#include <Library/PcdLib.h>
++
++#include "PlatformRegisters.h"
++
++VOID
++PlatformInitialize ()
++{
++  // Initialize GIC
++  MmioWrite32 (GICR_WAKER_CURRENT_CPU, (MmioRead32 (GICR_WAKER_CURRENT_CPU) & ~GIC_WAKER_PROCESSORSLEEP));
++}
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.inf b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.inf
+new file mode 100644
+index 0000000..25a7f22
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformPrePiLib.inf
+@@ -0,0 +1,25 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = PlatformPrePiLib
++  FILE_GUID                      = 59C11815-F8DA-4F49-B4FB-EC1E41ED1F07
++  MODULE_TYPE                    = SEC
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = PlatformPrePiLib
++
++[Sources]
++  PlatformPrePiLib.c
++
++[Sources.AArch64]
++  AArch64/PlatformPrePiLib.S
++
++[Packages]
++  ArmPkg/ArmPkg.dec
++  MdePkg/MdePkg.dec
++  SiliciumPkg/SiliciumPkg.dec
++
++[LibraryClasses]
++  PcdLib
++  IoLib
++
++[FixedPcd]
++  gArmTokenSpaceGuid.PcdGicRedistributorsBase
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformRegisters.h b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformRegisters.h
+new file mode 100644
+index 0000000..261741c
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/PlatformPrePiLib/PlatformRegisters.h
+@@ -0,0 +1,9 @@
++#ifndef _PLATFORM_REGISTERS_H_
++#define _PLATFORM_REGISTERS_H_
++
++#define GICR_WAKER               0x0014
++#define GICR_SIZE                0x20000
++#define GICR_WAKER_CURRENT_CPU   FixedPcdGet64(PcdGicRedistributorsBase) + GICR_WAKER
++#define GIC_WAKER_PROCESSORSLEEP 2
++
++#endif /* _PLATFORM_REGISTERS_H_ */
+\ No newline at end of file
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.c b/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.c
+new file mode 100644
+index 0000000..91af993
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.c
+@@ -0,0 +1,110 @@
++#include <Library/DebugLib.h>
++#include <Library/MemoryAllocationLib.h>
++#include <Library/UefiBootServicesTableLib.h>
++#include <Library/MemoryMapHelperLib.h>
++#include <Library/BaseMemoryLib.h>
++#include <Library/RFSProtectionLib.h>
++
++#include <Protocol/EFIScm.h>
++#include <Protocol/scm_sip_interface.h>
++
++#define MAX_DESTINATION_VMS 3
++
++EFI_STATUS
++EFIAPI
++RFSProtectSharedArea (
++  UINT64 EfsBaseAddr,
++  UINT64 EfsSizeAddr)
++{
++  EFI_STATUS             Status                                 = EFI_SUCCESS;
++  hyp_memprot_ipa_info_t IpaInfo;
++  QCOM_SCM_PROTOCOL     *mScmProtocol                           = NULL;
++  UINT64                 ParameterArray[SCM_MAX_NUM_PARAMETERS] = {0};
++  UINT64                 Results[SCM_MAX_NUM_RESULTS]           = {0};
++  UINT32                 DataSize                               = 0;
++  UINT32                 SourceVM                               = AC_VM_HLOS;
++  VOID                  *Data                                   = NULL;
++  hyp_memprot_assign_t  *Assign                                 = (hyp_memprot_assign_t *)ParameterArray;
++
++  //
++  // Allow both Windows / Linux and Modem Subsystem to Access the Shared Memory Region.
++  // This is needed otherwise the Modem Subsystem will Crash when Attempting to Read Data.
++  //
++  hyp_memprot_dstVM_perm_info_t dstVM_perm_info[MAX_DESTINATION_VMS] = {
++    {
++      AC_VM_HLOS, 
++      (VM_PERM_R | VM_PERM_W), 
++      (UINT64)NULL, 
++      0
++    },
++    {
++      AC_VM_MSS_MSA, 
++      (VM_PERM_R | VM_PERM_W), 
++      (UINT64)NULL, 
++      0
++    },
++    {
++      AC_VM_MSS_NAV,
++      (VM_PERM_R | VM_PERM_W),
++      (UINT64)NULL,
++      0
++    }
++  };
++
++  // Locate SCM Protocol
++  Status = gBS->LocateProtocol (&gQcomScmProtocolGuid, NULL, (VOID *)&mScmProtocol);
++  if (EFI_ERROR (Status)) {
++    DEBUG ((EFI_D_ERROR, "%a: Failed to Locate SCM Protocol! Status = %r\n", __FUNCTION__, Status));
++    return Status;
++  }
++
++  // Fill the Address Details
++  IpaInfo.IPAaddr = EfsBaseAddr;
++  IpaInfo.IPAsize = EfsSizeAddr;
++
++  DataSize = sizeof(hyp_memprot_ipa_info_t) + sizeof(SourceVM) + (MAX_DESTINATION_VMS * sizeof(hyp_memprot_dstVM_perm_info_t)) +  4;
++
++  Data = AllocateZeroPool (DataSize);
++  if (Data == NULL) {
++    DEBUG ((EFI_D_ERROR, "%a: Not Enough Memory!\n", __FUNCTION__));
++    return EFI_OUT_OF_RESOURCES;
++  }
++
++  Assign->IPAinfolist = (UINT64)Data;
++
++  CopyMem ((VOID *)Assign->IPAinfolist, &IpaInfo, sizeof(hyp_memprot_ipa_info_t));
++
++  Assign->IPAinfolistsize = sizeof(hyp_memprot_ipa_info_t);
++  Assign->sourceVMlist = (UINT64)Data + sizeof(hyp_memprot_ipa_info_t);
++
++  CopyMem ((VOID *)Assign->sourceVMlist, &SourceVM, sizeof(SourceVM));
++
++  Assign->srcVMlistsize = sizeof(SourceVM);
++  Assign->destVMlist = (UINT64)Data + sizeof(hyp_memprot_ipa_info_t) + sizeof(SourceVM) + 4;
++
++  CopyMem ((VOID *)Assign->destVMlist, dstVM_perm_info, MAX_DESTINATION_VMS * sizeof(hyp_memprot_dstVM_perm_info_t));
++
++  Assign->destVMlistsize = MAX_DESTINATION_VMS * sizeof(hyp_memprot_dstVM_perm_info_t);
++  Assign->spare          = 0;
++
++  // Send Hypervisor Call
++  Status = mScmProtocol->ScmSipSysCall (mScmProtocol, HYP_MEM_PROTECT_ASSIGN, HYP_MEM_PROTECT_ASSIGN_PARAM_ID, ParameterArray, Results);
++  if (EFI_ERROR (Status)) {
++    DEBUG ((EFI_D_ERROR, "%a: Failed to Send the Hypervisor Call! Status = %r\n", __FUNCTION__, Status));
++  }
++
++  return Status;
++}
++
++EFI_STATUS
++EFIAPI
++RFSLocateAndProtectSharedArea ()
++{
++  ARM_MEMORY_REGION_DESCRIPTOR_EX MpssEfs;
++
++  if (!EFI_ERROR (LocateMemoryMapAreaByName ("MPSS_EFS", &MpssEfs))) {
++    return RFSProtectSharedArea(MpssEfs.Address, MpssEfs.Length);
++  }
++
++  return EFI_NOT_FOUND;
++}
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.inf b/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.inf
+new file mode 100644
+index 0000000..46a3298
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/RFSProtectionLib/RFSProtectionLib.inf
+@@ -0,0 +1,26 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = RFSProtectionLib
++  FILE_GUID                      = 2FDF4E63-5AD5-4385-A729-868019B45A92
++  MODULE_TYPE                    = DXE_DRIVER
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = RFSProtectionLib|DXE_DRIVER DXE_RUNTIME_DRIVER UEFI_APPLICATION
++
++[Sources]
++  RFSProtectionLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  ArmPkg/ArmPkg.dec
++  QcomPkg/QcomPkg.dec
++  SiliciumPkg/SiliciumPkg.dec
++
++[LibraryClasses]
++  DebugLib
++  MemoryAllocationLib
++  UefiBootServicesTableLib
++  MemoryMapHelperLib
++  BaseMemoryLib
++
++[Protocols]
++  gQcomScmProtocolGuid
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.c b/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.c
+new file mode 100644
+index 0000000..712d481
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.c
+@@ -0,0 +1,93 @@
++#include <Library/ArmLib.h>
++#include <Library/SoCPlatformLib.h>
++
++STATIC
++ARM_CORE_INFO
++mArmPlatformMpCoreInfoTable[] = {
++  {
++    // Cluster 0, Core 0
++    0x000,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 0, Core 1
++    0x100,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 0, Core 2
++    0x200,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 0, Core 3
++    0x300,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 1, Core 0
++    0x400,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 1, Core 1
++    0x500,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 1, Core 2
++    0x600,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  },
++  {
++    // Cluster 2, Core 0
++    0x700,
++
++    // MP Core MailBox Set/Get/Clear Addresses and Clear Value
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (EFI_PHYSICAL_ADDRESS)0,
++    (UINT64)0xFFFFFFFF
++  }
++};
++
++ARM_CORE_INFO*
++GetCoreTable ()
++{
++  return mArmPlatformMpCoreInfoTable;
++}
+diff --git a/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.inf b/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.inf
+new file mode 100644
+index 0000000..b635a2e
+--- /dev/null
++++ b/Silicon/Qualcomm/CliffsPkg/Library/SoCPlatformLib/SoCPlatformLib.inf
+@@ -0,0 +1,19 @@
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = SoCPlatformLib
++  FILE_GUID                      = C099699F-7D5F-4A23-8E77-FF99C24D638B
++  MODULE_TYPE                    = BASE
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = SoCPlatformLib
++
++[Sources]
++  SoCPlatformLib.c
++
++[Packages]
++  ArmPkg/ArmPkg.dec
++  MdePkg/MdePkg.dec
++  SiliciumPkg/SiliciumPkg.dec
++
++[LibraryClasses]
++  BaseLib
++  ArmLib
+\ No newline at end of file
+diff --git a/Silicon/Silicium/SiliciumPkg/Library/PeiHobLib/PeiHobLib.c b/Silicon/Silicium/SiliciumPkg/Library/PeiHobLib/PeiHobLib.c
+index 85e0d78..d0e5a7c 100644
+--- a/Silicon/Silicium/SiliciumPkg/Library/PeiHobLib/PeiHobLib.c
++++ b/Silicon/Silicium/SiliciumPkg/Library/PeiHobLib/PeiHobLib.c
+@@ -32,16 +32,77 @@ BuildMemHobForFv (IN UINT16 Type)
+   }
+ }
+ 
++//
++// Bring-up progress bar owned by the caihong port (caihong.dsc,
++// CAIHONG_BRINGUP_MARKERS).  Whatever N the panel shows is the last milestone
++// reached; see Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c for the numbering.
++//
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++#define BRINGUP_STEP(n)                                                \
++  do {                                                                 \
++    volatile UINT32 *BringupFb_ = (volatile UINT32 *)0xD5100000ULL;     \
++    UINTN            BringupX_, BringupY_, BringupBand_, BringupIn_;    \
++    for (BringupY_ = 0; BringupY_ < 2120U; BringupY_++) {                \
++      BringupBand_ = BringupY_ / (2120U / 14U);                         \
++      BringupIn_   = BringupY_ % (2120U / 14U);                         \
++      for (BringupX_ = 0; BringupX_ < 3000U; BringupX_++) {              \
++        BringupFb_[BringupY_ * 3000U + BringupX_] =                      \
++          (((BringupBand_ < (UINTN)(n)) && (BringupIn_ >= 6U)))          \
++            ? 0xFFFFFFFFU : 0xFF000000U;                                 \
++      }                                                                 \
++    }                                                                   \
++  } while (0)
++#else
++#define BRINGUP_STEP(n)   do { } while (0)
++#endif
++
+ EFI_STATUS
+ EFIAPI
+ PlatformPeim ()
+ {
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  //
++  // Step 4 = PlatformPeim entered AND PcdFvBaseAddress describes where
++  // BootShim actually placed the volume (0xA7000000).
++  //
++  // BuildFvHob() publishes an FV HOB at that address and BuildMemHobForFv()
++  // then allocates memory at each FV2 HOB's base, so a wrong PCD here points
++  // the firmware volume at the wrong physical memory.  A solid RED screen means
++  // the PCD is wrong -- an unmistakable "root cause found" signal.
++  //
++  if (PcdGet64 (PcdFvBaseAddress) == 0xA7000000ULL) {
++    BRINGUP_STEP (4);
++  } else {
++    volatile UINT32 *BringupFb_ = (volatile UINT32 *)0xD5100000ULL;
++    UINTN            BringupI_;
++    for (BringupI_ = 0; BringupI_ < (3000U * 2120U); BringupI_++) {
++      BringupFb_[BringupI_] = 0xFFFF0000U;   // solid red: PCD is WRONG
++    }
++  }
++#endif
++
+   // Build FV HOB
+   BuildFvHob (PcdGet64 (PcdFvBaseAddress), PcdGet32 (PcdFvSize));
++
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 5: BuildFvHob returned.
++  BRINGUP_STEP (5);
++#endif
++
+   BuildMemHobForFv (EFI_HOB_TYPE_FV2);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 6: memory allocation HOBs for the FV2 HOBs created.
++  BRINGUP_STEP (6);
++#endif
++
+   // Build Platform HOBs
+   BuildPlatformHobs ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 7: BuildPlatformHobs (PlatformHobLib) returned.
++  BRINGUP_STEP (7);
++#endif
++
+   return EFI_SUCCESS;
+ }
+diff --git a/Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c b/Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c
+index e0f741b..336ed5b 100644
+--- a/Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c
++++ b/Silicon/Silicium/SiliciumPkg/PrePi/PrePi.c
+@@ -14,6 +14,56 @@
+ #include <Library/PcdLib.h>
+ #include <Library/BaseMemoryLib.h>
+ #include <Library/DebugLib.h>
++#include <Library/ExtractGuidedSectionLib.h>
++
++//
++// Bring-up instrumentation owned by the caihong port (see caihong.dsc,
++// CAIHONG_BRINGUP_MARKERS).  The device has no accessible UART, so the panel
++// doubles as a progress indicator: each milestone repaints the ABL
++// "Display Reserved" region a different solid colour, and the colour left on
++// screen when the device stops identifies the last milestone reached.
++//
++// 0xD5100000 is this device's XBL Display_Reserved base (docs/abl-memory-map.json).
++//
++// The macro keeps its storage local so it can be used from any function.
++//
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++#define BRINGUP_PAINT(c)                                           \
++  do {                                                             \
++    volatile UINT32 *BringupFb_ = (volatile UINT32 *)0xD5100000ULL; \
++    UINTN            BringupI_;                                    \
++    for (BringupI_ = 0; BringupI_ < (3000U * 2120U); BringupI_++) { \
++      BringupFb_[BringupI_] = (UINT32)(c);                         \
++    }                                                              \
++  } while (0)
++
++//
++// BRINGUP_STEP(n): draw a progress bar instead of a flat colour.
++//
++// Colour markers turned out to be ambiguous when read by eye on real hardware
++// (0xFF00FF00 and 0xFF00FF80 are both just "green"), so for the region of code
++// still being narrowed down the panel shows N horizontal white bands instead.
++// The number of bands IS the milestone number; nothing has to be interpreted.
++//
++#define BRINGUP_STEP(n)                                             \
++  do {                                                              \
++    volatile UINT32 *BringupFb_ = (volatile UINT32 *)0xD5100000ULL;  \
++    UINTN            BringupX_, BringupY_, BringupBand_, BringupIn_; \
++    for (BringupY_ = 0; BringupY_ < 2120U; BringupY_++) {            \
++      BringupBand_ = BringupY_ / (2120U / 14U);                      \
++      BringupIn_   = BringupY_ % (2120U / 14U);                      \
++      for (BringupX_ = 0; BringupX_ < 3000U; BringupX_++) {          \
++        BringupFb_[BringupY_ * 3000U + BringupX_] =                  \
++          (((BringupBand_ < (UINTN)(n)) && (BringupIn_ >= 6U)))      \
++            ? 0xFFFFFFFFU : 0xFF000000U;                             \
++      }                                                             \
++    }                                                              \
++  } while (0)
++#else
++#define BRINGUP_PAINT(c)  do { } while (0)
++#define BRINGUP_STEP(n)   do { } while (0)
++#endif
++
+ #include <Library/SerialPortLib.h>
+ #include <Library/PlatformPrePiLib.h>
+ #include <Library/MemoryProtectionLib.h>
+@@ -79,6 +129,11 @@ PrePiMain (IN UINT64 StartTimeStamp)
+   ARM_MEMORY_REGION_DESCRIPTOR_EX UefiStackRegion;
+   FIRMWARE_SEC_PERFORMANCE        Performance;
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M5: PrePiMain entered -- the "DXE Heap" region lookup below is next.
++  BRINGUP_PAINT (0xFFFFFFFF);   // white
++#endif
++
+   // Locate "DXE Heap" Memory Region
+   Status  = LocateMemoryMapAreaByName ("DXE Heap", &DxeHeapRegion);
+   Status |= LocateMemoryMapAreaByName ("DXE_Heap", &DxeHeapRegion);
+@@ -95,6 +150,23 @@ PrePiMain (IN UINT64 StartTimeStamp)
+     ASSERT_EFI_ERROR (Status);
+   }
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  //
++  // M6 is a *decision*, not just a milestone: the two regions above come from
++  // the ABL RAM partition table.  If the lookup failed, DxeHeapRegion and
++  // UefiStackRegion still hold uninitialised stack garbage, and HobConstructor
++  // / MemoryPeim will happily build the DXE heap there -- a guaranteed fault.
++  //
++  //   GREEN = both regions located (the partition table is present)
++  //   RED   = lookup failed (no usable memory descriptor)
++  //
++  if (DxeHeapRegion.Address && UefiStackRegion.Address) {
++    BRINGUP_PAINT (0xFF00FF00);   // green: regions found
++  } else {
++    BRINGUP_PAINT (0xFFFF0000);   // red: regions NOT found
++  }
++#endif
++
+   // Declare UEFI Regions
+   UINTN MemoryBase     = FixedPcdGet32 (PcdSystemMemoryBase);
+   UINTN UefiMemoryBase = DxeHeapRegion.Address;
+@@ -108,16 +180,31 @@ PrePiMain (IN UINT64 StartTimeStamp)
+   // Init Architecture Specific Bits
+   ArchInitialize ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M6a: ArchInitialize (exception vectors, CPU setup) returned.
++  BRINGUP_PAINT (0xFF800080);   // purple
++#endif
++
+   // Init Debug Agent
+   InitializeDebugAgent (DEBUG_AGENT_INIT_POSTMEM_SEC, NULL, NULL);
+ 
+   // Set Debug Timer Interrupt
+   SaveAndSetDebugTimerInterrupt (TRUE);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M6b: debug agent and debug timer interrupt set up.
++  BRINGUP_PAINT (0xFF808080);   // grey
++#endif
++
+   // Declare PI/UEFI Memory Region
+   HobList = HobConstructor ((VOID *)UefiMemoryBase, UefiMemorySize, (VOID *)UefiMemoryBase, (VOID *)StacksBase);
+   PrePeiSetHobList (HobList);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M6c: HOB list constructed in the DXE heap and published.
++  BRINGUP_PAINT (0xFF804000);   // brown
++#endif
++
+   DEBUG ((EFI_D_WARN, "MMU In\r"));
+ 
+   // Init MMU and Build Memory HOBs
+@@ -127,12 +214,22 @@ PrePiMain (IN UINT64 StartTimeStamp)
+     ASSERT_EFI_ERROR (Status);
+   }
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M7: MMU enabled and memory HOBs built.
++  BRINGUP_PAINT (0xFF808000);   // olive
++#endif
++
+   // Build Stack HOB
+   BuildStackHob (StacksBase, StacksSize);
+ 
+   // Build CPU HOB
+   BuildCpuHob ((UINT8)ArmGetPhysicalAddressBits (), PcdGet8 (PcdPrePiCpuIoSize));
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M8: stack and CPU HOBs built; the MP core PPI lookup is next.
++  BRINGUP_PAINT (0xFF000080);   // navy
++#endif
++
+   // Check 
+   if (ArmIsMpCore ()) {
+     ARM_MP_CORE_INFO_PPI *ArmMpCoreInfoPpi = NULL;
+@@ -146,48 +243,268 @@ PrePiMain (IN UINT64 StartTimeStamp)
+       ASSERT_EFI_ERROR (Status);
+     }
+ 
+-    // Get MP Core Infos
+-    Status = ArmMpCoreInfoPpi->GetMpCoreInfo (&ArmCoreCount, &ArmCoreInfoTable);
+-    if (!EFI_ERROR (Status) && ArmCoreCount > 0) {
+-      // Build MP Core Data HOB
+-      BuildGuidDataHob (&gArmMpCoreInfoGuid, ArmCoreInfoTable, sizeof (ARM_CORE_INFO) * ArmCoreCount);
++    //
++    // caihong fix: ASSERT_EFI_ERROR() compiles to nothing in a RELEASE build,
++    // so on a platform where this PPI is not published the original code fell
++    // straight through to a NULL dereference below and hung the boot with no
++    // output.  Skip the call instead -- losing the MP core HOB degrades
++    // secondary-core bring-up, it does not have to kill the boot.
++    //
++    if (EFI_ERROR (Status) || (ArmMpCoreInfoPpi == NULL)) {
++      DEBUG ((EFI_D_ERROR, "MP core info PPI unavailable, skipping MP HOB\n"));
++    } else {
++      // Get MP Core Infos
++      Status = ArmMpCoreInfoPpi->GetMpCoreInfo (&ArmCoreCount, &ArmCoreInfoTable);
++      if (!EFI_ERROR (Status) && ArmCoreCount > 0) {
++        // Build MP Core Data HOB
++        BuildGuidDataHob (&gArmMpCoreInfoGuid, ArmCoreInfoTable, sizeof (ARM_CORE_INFO) * ArmCoreCount);
++      }
+     }
+   }
+ 
+   // Store Timer Value
+   Performance.ResetEnd = GetTimeInNanoSecond (StartTimeStamp);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M8a: the MP-core PPI block above completed (or ArmIsMpCore() was false).
++  BRINGUP_STEP (1);   /* MP core block done */
++#endif
++
+   // Build SEC Performance Data HOB
+   BuildGuidDataHob (&gEfiFirmwarePerformanceGuid, &Performance, sizeof (Performance));
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M8a1: SEC performance HOB built.
++  BRINGUP_STEP (2);   /* SEC performance HOB built */
++#endif
++
+   // Set Boot Mode
+   SetBootMode (BOOT_WITH_DEFAULT_SETTINGS);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M8a2: boot mode set; PlatformPeim() is next.  (Its internals are
++  // instrumented in Silicon/Silicium/SiliciumPkg/Library/PeiHobLib/PeiHobLib.c
++  // because PcdFvBaseAddress is only declared for that module.)
++  BRINGUP_STEP (3);   /* SetBootMode done */
++#endif
++
+   // Init Platform HOBs
+   PlatformPeim ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M8b: PlatformPeim (BuildPlatformHobs) returned -- this is the code that
++  //      consumes PcdFvDecompressAddr / PcdScheduleInterfaceAddr.
++  BRINGUP_STEP (7);   /* PlatformPeim returned */
++#endif
++
+   // Enable Memory Protection
+   EnableMemoryProtection ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 8: EnableMemoryProtection returned (it reprograms MMU attributes).
++  BRINGUP_STEP (8);
++#endif
++
+   // Register Performance Info
+   PERF_START (NULL, "PEI", NULL, StartTimeStamp);
+ 
+   // Run Library Constructors
+   ProcessLibraryConstructorList ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 9: every library constructor ran.
++  BRINGUP_STEP (9);
++#endif
++
++  //
++  // caihong bring-up probe: does the guided-section handler actually work?
++  //
++  // Everything below is a one-shot diagnostic.  The firmware volume really does
++  // contain a GUIDed LZMA section wrapping the inner FV (verified offline:
++  // decompressing the FD's section at 0xE220 yields a 10.5 MB
++  // EFI_SECTION_FIRMWARE_VOLUME_IMAGE), yet FfsProcessFvFile() returns
++  // EFI_NOT_FOUND, which can only come from ExtractGuidedSectionGetInfo()
++  // failing.  Registration looks correct on paper (library linked, constructor
++  // order right, PCD is FixedAtBuild 0x10), so measure it instead of guessing.
++  //
++  // The probe performs exactly the lookup FfsFindSectionDataWithHook does
++  // internally -- take the FV_IMAGE FFS file, step past its 24-byte header to
++  // the first section, and ask ExtractGuidedSectionGetInfo about it.
++  //
++  // Result is left on screen and the CPU parks here, so the bar count is
++  // unambiguous:
++  //    11 bars = EFI_SUCCESS        -> handler fine, fault is in the section walk
++  //     6 bars = EFI_NOT_FOUND      -> handler truly not registered
++  //     3 bars = EFI_UNSUPPORTED    -> GUID recognised but decode unsupported
++  //     7 bars = any other status
++  //
++#if defined (CAIHONG_GUIDED_PROBE) && CAIHONG_GUIDED_PROBE
++  {
++    EFI_PEI_FV_HANDLE   ProbeVolume = NULL;
++    EFI_PEI_FILE_HANDLE ProbeFile   = NULL;
++    EFI_STATUS          ProbeStatus;
++    UINT32              ProbeDst = 0;
++    UINT32              ProbeScratch = 0;
++    UINT16              ProbeAttr = 0;
++    VOID                *ProbeSection;
++
++    ProbeStatus = FfsAnyFvFindFirstFile (
++                    EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE,
++                    &ProbeVolume, &ProbeFile);
++    if (EFI_ERROR (ProbeStatus) || (ProbeFile == NULL)) {
++      BRINGUP_STEP (7);
++    } else {
++      ProbeSection = (VOID *)((UINT8 *)ProbeFile + sizeof (EFI_FFS_FILE_HEADER));
++      ProbeStatus  = ExtractGuidedSectionGetInfo (
++                       ProbeSection, &ProbeDst, &ProbeScratch, &ProbeAttr);
++      if (ProbeStatus == EFI_SUCCESS) {
++        //
++        // GetInfo works (this is what the previous probe showed as 11 bars).
++        // So EFI_NOT_FOUND must be coming from the *decode* half, which
++        // FfsProcessSection also maps onto EFI_NOT_FOUND.  Do the decode here
++        // and report its own status.
++        //
++        VOID    *ProbeDstBuf;
++        VOID    *ProbeScratchBuf;
++        UINT32  ProbeAuth = 0;
++
++        ProbeScratchBuf = AllocatePages (EFI_SIZE_TO_PAGES (ProbeScratch));
++        if (ProbeScratchBuf == NULL) {
++          BRINGUP_STEP (4);          // scratch allocation failed
++          for ( ; ; ) {
++            CpuDeadLoop ();
++          }
++        }
++
++        ProbeDstBuf = AllocatePages (EFI_SIZE_TO_PAGES (ProbeDst) + 1);
++        if (ProbeDstBuf == NULL) {
++          BRINGUP_STEP (5);          // destination allocation failed
++          for ( ; ; ) {
++            CpuDeadLoop ();
++          }
++        }
++
++        // Match FfsProcessSection: leave one page of headroom for the section
++        // header so the payload ends up page aligned.
++        ProbeDstBuf = (UINT8 *)ProbeDstBuf + EFI_PAGE_SIZE - sizeof (EFI_COMMON_SECTION_HEADER);
++
++        ProbeStatus = ExtractGuidedSectionDecode (
++                        ProbeSection, &ProbeDstBuf, ProbeScratchBuf, &ProbeAuth);
++
++        if (ProbeStatus == EFI_SUCCESS) {
++          BRINGUP_STEP (12);         // decode OK -> fault is in the re-scan
++        } else if (ProbeStatus == EFI_OUT_OF_RESOURCES) {
++          BRINGUP_STEP (4);
++        } else if (ProbeStatus == EFI_VOLUME_CORRUPTED) {
++          BRINGUP_STEP (5);
++        } else if (ProbeStatus == EFI_UNSUPPORTED) {
++          BRINGUP_STEP (3);
++        } else {
++          BRINGUP_STEP (9);          // other decode error
++        }
++      } else if (ProbeStatus == EFI_NOT_FOUND) {
++        BRINGUP_STEP (6);
++      } else if (ProbeStatus == EFI_UNSUPPORTED) {
++        BRINGUP_STEP (3);
++      } else {
++        BRINGUP_STEP (7);
++      }
++    }
++
++    for ( ; ; ) {
++      CpuDeadLoop ();
++    }
++  }
++#endif
++
+   // Decompress FV
+-  Status = DecompressFirstFv ();
+-  if (EFI_ERROR (Status)) {
+-    DEBUG ((EFI_D_ERROR, "Failed to Decompress FV!\n"));
+-    ASSERT_EFI_ERROR (Status);
++  //
++  // caihong: DecompressFirstFv() is inlined here so the two halves can be told
++  // apart.  It does exactly:
++  //     FfsAnyFvFindFirstFile (EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE, ...)
++  //     FfsProcessFvFile (FileHandle, VolumeHandle)
++  // and the panel progress bar reports which of the two returned.
++  //
++  {
++    EFI_PEI_FV_HANDLE   BringupVolumeHandle = NULL;
++    EFI_PEI_FILE_HANDLE BringupFileHandle   = NULL;
++
++    Status = FfsAnyFvFindFirstFile (
++               EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE,
++               &BringupVolumeHandle, &BringupFileHandle);
++
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++    // Step 10: the FV_IMAGE file lookup returned (found or not).
++    BRINGUP_STEP (10);
++#endif
++
++    if (!EFI_ERROR (Status)) {
++      Status = FfsProcessFvFile (BringupFileHandle, BringupVolumeHandle);
++
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++      //
++      // Success and failure must look different, because they lead to very
++      // different outcomes:
++      //
++      //   11 bars   = the compressed volume decompressed and its FV HOB was
++      //               published, so LoadDxeCoreFromFv can find the real DxeCore.
++      //   solid RED = decompression FAILED.  No new FV HOB exists, so
++      //               FfsAnyFvFindFirstFile(DXE_CORE) falls back to the OUTER
++      //               volume -- whose first file is PrePi itself, packed as
++      //               EFI_FV_FILETYPE_DXE_CORE -- and the loader ends up
++      //               loading PrePi as if it were the DXE core.
++      //
++      if (!EFI_ERROR (Status)) {
++        BRINGUP_STEP (11);
++      } else {
++        //
++        // Decompression failed.  Encode the reason as a bar count so the
++        // failure mode can be identified from the panel alone:
++        //   3 bars = EFI_UNSUPPORTED        (no guided-section handler)
++        //   4 bars = EFI_OUT_OF_RESOURCES   (allocation failed)
++        //   5 bars = EFI_VOLUME_CORRUPTED   (inner volume malformed)
++        //   6 bars = EFI_NOT_FOUND
++        //   7 bars = anything else
++        //
++        if (Status == EFI_UNSUPPORTED) {
++          BRINGUP_STEP (3);
++        } else if (Status == EFI_OUT_OF_RESOURCES) {
++          BRINGUP_STEP (4);
++        } else if (Status == EFI_VOLUME_CORRUPTED) {
++          BRINGUP_STEP (5);
++        } else if (Status == EFI_NOT_FOUND) {
++          BRINGUP_STEP (6);
++        } else {
++          BRINGUP_STEP (7);
++        }
++      }
++#endif
++    }
++
++    if (EFI_ERROR (Status)) {
++      DEBUG ((EFI_D_ERROR, "Failed to Decompress FV!\n"));
++      ASSERT_EFI_ERROR (Status);
++    }
+   }
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 12: about to hand control to DxeCore.  If the panel stays on 12, the
++  //          DXE core was entered and something inside it failed; 13 means
++  //          LoadDxeCoreFromFv() returned instead of switching stacks.
++  BRINGUP_STEP (12);
++#endif
++
+   // Load DXE Core
+   Status = LoadDxeCoreFromFv (NULL, 0);
+   if (EFI_ERROR (Status)) {
+     DEBUG ((EFI_D_ERROR, "Failed to Load DXE Core from FV!\n"));
+     ASSERT_EFI_ERROR (Status);
+   }
++
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // Step 13: LoadDxeCoreFromFv returned (it is not supposed to).
++  BRINGUP_STEP (13);
++#endif
+ }
+ 
+ VOID
+@@ -197,9 +514,17 @@ CEntryPoint ()
+   ARM_MEMORY_REGION_DESCRIPTOR_EX DisplayRegion;
+   UINT64                          StartTimeStamp;
+ 
++  // M1: reaching C code at all means the SEC/entry asm and the FV handoff work.
++  BRINGUP_PAINT (0xFFFF0000);   // red
++
+   // Run SoC Specific Code
+   PlatformInitialize ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M2: GIC redistributor wake completed.
++  BRINGUP_PAINT (0xFFFF8000);   // orange
++#endif
++
+   //
+   // !!! Make this Debug only !!!
+   //
+@@ -225,6 +550,14 @@ CEntryPoint ()
+   // Init Serial Port
+   SerialPortInitialize ();
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M3: the two "Display Reserved" ZeroMem calls above did not fault.
++  //     Note: if the memory map handed us a bogus region, that ZeroMem would
++  //     have wiped this fill too -- a black screen here means the region
++  //     descriptor is suspect.
++  BRINGUP_PAINT (0xFFFFFF00);   // yellow
++#endif
++
+   // Print UEFI Version Message
+   DEBUG ((EFI_D_WARN, "\n"));
+   DEBUG ((EFI_D_WARN, "Project Silicium for %a\n",               FixedPcdGetPtr (PcdSmbiosSystemModel)));
+@@ -261,6 +594,14 @@ CEntryPoint ()
+   // Invalidate Data Cache
+   InvalidateDataCacheRange ((VOID *)UefiFdRegion.Address, UefiFdRegion.Length);
+ 
++#if defined (CAIHONG_BRINGUP_MARKERS) && CAIHONG_BRINGUP_MARKERS
++  // M4: the "UEFI FD" region lookup and the cache invalidate completed.
++  //     If the region was not found, Address/Length are whatever the callee
++  //     left behind -- worth knowing before we blame PrePiMain.
++  BRINGUP_PAINT (0xFF00FFFF);   // cyan
++  // Hand over to the panel: any colour after this point comes from DxeCore.
++#endif
++
+   // Go to Main Function
+   PrePiMain (StartTimeStamp);
+ }
+diff --git a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
+index 7a1358f..0a52d0a 100644
+--- a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
++++ b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
+@@ -15,10 +15,20 @@
+   *_CLANGPDB_*_DLINK_FLAGS = /ALIGN:0x1000 /FILEALIGN:0x1000
+ 
+ [BuildOptions.common.EDKII.DXE_CORE,BuildOptions.common.EDKII.DXE_DRIVER,BuildOptions.common.EDKII.UEFI_DRIVER,BuildOptions.common.EDKII.UEFI_APPLICATION,BuildOptions.common.EDKII.MM_CORE_STANDALONE,BuildOptions.common.EDKII.MM_STANDALONE]
+-  *_CLANGPDB_*_DLINK_FLAGS = /ALIGN:0x1000
++  #
++  # caihong: FILEALIGN must match ALIGN, otherwise GenFv refuses to rebase these
++  # images inside an UNCOMPRESSED firmware volume (PE image Section-Alignment and
++  # File-Alignment do not match, error 3000).  The SEC line above already sets
++  # both; do the same here so a volume can be stored without compression.
++  #
++  *_CLANGPDB_*_DLINK_FLAGS = /ALIGN:0x1000 /FILEALIGN:0x1000
+ 
+ [BuildOptions.common.EDKII.DXE_RUNTIME_DRIVER]
+-  *_CLANGPDB_*_DLINK_FLAGS = /ALIGN:0x10000
++  #
++  # caihong: FILEALIGN must match ALIGN (see the DXE_CORE block above); GenFv
++  # refuses to rebase runtime drivers inside an uncompressed volume otherwise.
++  #
++  *_CLANGPDB_*_DLINK_FLAGS = /ALIGN:0x10000 /FILEALIGN:0x10000
+ 
+ [BuildOptions.common.EDKII.MM_CORE_STANDALONE,BuildOptions.common.EDKII.MM_STANDALONE]
+   *_CLANGPDB_AARCH64_CC_FLAGS = -mstrict-align

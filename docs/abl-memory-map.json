@@ -1,0 +1,166 @@
+{
+  "NOMAP": {
+    "base": "0x80000000",
+    "size": "0x16E0000"
+  },
+  "RSRV0": {
+    "base": "0x816E0000",
+    "size": "0x320000"
+  },
+  "XBL_DT": {
+    "base": "0x81A00000",
+    "size": "0x40000"
+  },
+  "XBL_Ramdump": {
+    "base": "0x81A40000",
+    "size": "0x1C0000"
+  },
+  "AOP": {
+    "base": "0x81C00000",
+    "size": "0xA0000"
+  },
+  "UEFI_Log": {
+    "base": "0x81CE4000",
+    "size": "0x10000"
+  },
+  "SMEM": {
+    "base": "0x81D00000",
+    "size": "0x200000"
+  },
+  "PvmFw": {
+    "base": "0x824A0000",
+    "size": "0x100000"
+  },
+  "PIL_Reserved": {
+    "base": "0x8BC00000",
+    "size": "0x17580000"
+  },
+  "DBI_Dump": {
+    "base": "0xA6100000",
+    "size": "0xF00000"
+  },
+  "UEFI_FD": {
+    "base": "0xA7000000",
+    "size": "0x400000"
+  },
+  "UEFI_FD_Reserved": {
+    "base": "0xA7400000",
+    "size": "0x200000"
+  },
+  "CPU_Vectors": {
+    "base": "0xA7600000",
+    "size": "0x1000"
+  },
+  "Info_Blk": {
+    "base": "0xA7601000",
+    "size": "0x1000"
+  },
+  "MMU_PageTables": {
+    "base": "0xA7602000",
+    "size": "0x3000"
+  },
+  "Log_Buffer": {
+    "base": "0xA7605000",
+    "size": "0x8000"
+  },
+  "UEFI_Stack": {
+    "base": "0xA760D000",
+    "size": "0x40000"
+  },
+  "SEC_Heap": {
+    "base": "0xA764D000",
+    "size": "0x8C000"
+  },
+  "Sched_Heap": {
+    "base": "0xA76D9000",
+    "size": "0x400000"
+  },
+  "FV_Region": {
+    "base": "0xA7AD9000",
+    "size": "0x400000"
+  },
+  "UEFI_RESV": {
+    "base": "0xA7ED9000",
+    "size": "0x127000"
+  },
+  "Kernel": {
+    "base": "0xA8000000",
+    "size": "0x10000000"
+  },
+  "DXE_Heap": {
+    "base": "0xB8000000",
+    "size": "0x1BA00000"
+  },
+  "TZApps_Reserved": {
+    "base": "0xD8800000",
+    "size": "0x1B000000"
+  },
+  "Display_Reserved": {
+    "base": "0xD5100000",
+    "size": "0x2B00000"
+  },
+  "IMEM_Base": {
+    "base": "0x14680000",
+    "size": "0x2A000"
+  },
+  "IMEM_Cookie_Base": {
+    "base": "0x146AA000",
+    "size": "0x16000"
+  },
+  "IPC_ROUTER_TOP": {
+    "base": "0x400000",
+    "size": "0x100000"
+  },
+  "SECURITY_CONTROL": {
+    "base": "0x780000",
+    "size": "0x7000"
+  },
+  "QUP": {
+    "base": "0x800000",
+    "size": "0x300000"
+  },
+  "PRNG_CFG_PRNG": {
+    "base": "0x10C0000",
+    "size": "0xC000"
+  },
+  "CRYPTO0_CRYPTO": {
+    "base": "0x1DC0000",
+    "size": "0x40000"
+  },
+  "CLK_TCSR_TCSR_REGS": {
+    "base": "0x1F00000",
+    "size": "0x100000"
+  },
+  "PERIPH_SS": {
+    "base": "0x8800000",
+    "size": "0x100000"
+  },
+  "USB": {
+    "base": "0xA600000",
+    "size": "0x200000"
+  },
+  "AOSS": {
+    "base": "0xB000000",
+    "size": "0x4000000"
+  },
+  "TLMM": {
+    "base": "0xF000000",
+    "size": "0x1000000"
+  },
+  "SMMU": {
+    "base": "0x15000000",
+    "size": "0x200000"
+  },
+  "APSS_HM": {
+    "base": "0x17000000",
+    "size": "0x2000000"
+  },
+  "IMEM": {
+    "base": "0x14680000",
+    "size": "0x2C000"
+  },
+  "DDR": {
+    "base": "0x80000000",
+    "size": "0x80000000"
+  }
+}

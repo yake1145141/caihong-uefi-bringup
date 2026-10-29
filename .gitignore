@@ -1,0 +1,27 @@
+# Firmware images / extracted vendor binaries are never committed.
+*.img
+*.bin
+*.fd
+*.efi
+*.elf
+*.melf
+
+# Boot / partition backups
+backup/
+*.stock.*
+
+# Build outputs
+build/
+Build/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
