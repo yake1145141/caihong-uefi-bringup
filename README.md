@@ -10,11 +10,20 @@
 
 ## 一句话现状
 
-**UEFI 固件能在真机上运行，PrePi 全流程与 DxeCore 核心服务均已跑通，
-但从未进入 BDS 启动菜单，屏幕上从未出现过任何图形化 UEFI 界面，更未涉及 Windows。**
+**UEFI 固件已在真机上跑通 BDS 启动菜单（UEFI 选择启动项页面）；Windows ARM
+尚未启动。**
 
-当前阻塞点：参考固件在 DXE 派发过程中屏幕被清空 / 流程停住（见
-[`docs/bringup-log.md`](docs/bringup-log.md) B25）。
+进展分两个阶段：
+
+- **Android 15 环境**（B0–B25）：PrePi 全流程、DxeCore 核心服务都跑通，但卡在
+  UFS 驱动与外部中止，始终没进 BDS 菜单。
+- **升级到与参考工程匹配的 Android/ABL 版本后**（B26）：用户用**原本的 UEFI 镜像**
+  直接进入启动项页面。这证明前面那一串 UFS / VcsDxe / AOSS 问题是**固件与
+  底层系统版本不匹配**，不是板级配置或驱动逻辑本身。
+
+当前阻塞点：**这份能进菜单的 UEFI 没有 ACPI 表**（已解开内层 FV 确认，见
+[`docs/bringup-log.md`](docs/bringup-log.md) B26.6）。Windows on ARM 依赖 ACPI，
+所以下一步是把本项目已有的 ACPI 补丁接回可工作的 UEFI，再用 ARM PE 测试。
 
 ---
 
@@ -182,10 +191,12 @@ python build_uefi.py -d caihong -r DEBUG
 
 ## 诚实的边界
 
-- 屏幕上**从未出现过** UEFI 界面、启动菜单或 Windows
-- 没有任何 Windows 驱动被编写或验证
-- GPU / Wi-Fi / 音频 / 触控在 UEFI 下均未工作
+- **已出现 BDS 启动菜单**（B26，升级系统版本后由用户实测）；Android 15 阶段
+  （B0–B25）确实从未出现过
+- **从未启动 Windows**，也没有任何 Windows 驱动被编写或验证
+- GPU / Wi-Fi / 音频 / 触控在 UEFI 下均未验证
 - 部分结论来自对**闭源厂商驱动的字符串分析与行为观察**，不是源码级确认
+- 当前 UEFI 缺 ACPI，是否已能通过 Windows 引导器尚未测试
 
 ---
 

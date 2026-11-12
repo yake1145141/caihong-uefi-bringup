@@ -2170,3 +2170,137 @@ AOSS 寄存器就触发外部中止。
 
 已回滚原厂 `boot_b`，`sys.boot_completed=1`，Android 15 正常，数据无损。
 全程使用 `fastboot boot` + `boot_b` 测试，未触碰其他分区。
+---
+
+## B26. 用户实测成功进入 BDS 启动菜单；开始 Windows ARM PE 试验（2026-11-13）
+
+> 本节由用户报告与本地实测共同构成。距 B25 间隔 14 天，期间用户自行操作设备。
+
+### B26.1 决定性进展：UEFI 启动菜单跑起来了
+
+用户报告：**「我成功运行了 uefi」**，形态是 **UEFI 选择启动项的页面**（即 BDS Boot
+Manager Menu）。
+
+关键补充：**用的是「原本的 UEFI 镜像」，只是把 Android 系统版本更新了**。
+
+这直接验证了 B24 里提出的假设：
+
+| | 作者验证环境 | 我们之前 |
+| --- | --- | --- |
+| Android / ABL 版本 | Android 16 | Android 15 |
+| 结果 | 能进 BDS 菜单 | UFS `EFI_DEVICE_ERROR`、外部中止、900E |
+
+也就是说，**B24/B25 那一串 UFS、VcsDxe、AOSS 外部中止问题，根源是参考固件与
+设备 ABL/底层固件的版本不匹配，而不是板级配置或驱动逻辑本身**。
+
+至此必须修正 B0–B25 中若干处「从未出现 BDS 菜单 / 从未出现图形化 UEFI 界面」的
+表述：**该结论在 Android 15 环境下成立，但在升级到与参考工程一致的系统版本后已被推翻。**
+
+### B26.2 用户环境里的实物
+
+| 文件 | 说明 |
+| --- | --- |
+| `E:\1+padpro\Mu-caihong-0.img` | 能进菜单的固件，1,282,048 B，sha256 前 16 位 `CAB8863B0F4B0AB3` |
+| `E:\1+padpro\15\`、`16\` | Android 15 / 16 的升级包（`16\*.zip` 7.2 GB） |
+| `E:\1+padpro\BYDJ-PE-v4.0.2.iso` | 骁龙适配的 ARM PE，909.6 MB，sha256 `C8CD154649418DF8…` |
+| `E:\1+padpro\完整备份\SmartTool_20261030_043621` | 全量分区备份：152 个文件、18.67 GB，含 `LUN0_super.img`、`LUN4_boot_a/b.img`、GPT 备份 |
+
+对能进菜单的固件做了结构解析（`scripts/inspect_working_fw.py`）：
+
+```text
+ANDROID!  header_version=4  header_size=1584
+kernel = gzip(BootShim + 4 MB FV) @0x1000，解压后 4,194,416 B
+尾部附 DTB（0xD00DFEED）
+```
+
+### B26.3 ARM PE 镜像分析
+
+挂载 ISO 后确认是标准 Windows ARM64 PE：
+
+```text
+G:\efi\boot\bootaa64.efi   2.5 MB   PE machine = 0xAA64 ✓
+G:\efi\microsoft\boot\bcd
+G:\boot\boot.sdi
+G:\sources\boot.wim        896.55 MB   (< 4 GB，FAT32 可容纳)
+```
+
+### B26.4 已完成的工程产物：FAT32 PE 卷
+
+UEFI 不能直接引导 ISO9660。在 Linux 构建机上用 `7z + mkfs.vfat` 生成了可直接
+作为块设备使用的 FAT32 卷（`scripts/make_pe_fat_remote.sh`）：
+
+```text
+/root/data/BYDJ-PE-arm-fat32.img   1,258,291,200 B (1.2 GB)
+卷标 CAIHONGPE
+sha256 14443d43adbdef98022144f372894d1535844c8e3db515f36025ec3e3d418478
+```
+
+内容已实测：`efi/boot/bootaa64.efi`、`efi/microsoft/boot/bcd`、
+`sources/boot.wim`、FAT32 使用率 76%。
+
+本地副本：`E:\1+padpro\BYDJ-PE-arm-fat32.img`。
+
+### B26.5 BDS 启动项的真实情况（读源码确认）
+
+`MsBootOptionsLibRegisterDefaultBootOptions()` 注册的是：
+
+```c
+L"Internal Storage"  (参数 "SSD")
+L"USB Storage"       (参数 "USB")
+L"FFU Mode"          (隐藏)
+```
+
+`QcomPkg/Library/PlatformBootOptionsLib` 另加一个隐藏的 `L"Mass Storage"`。
+
+**没有 `Ram Storage`**。因此把 PE 塞进 boot.img 的 ramdisk 这条路在这份固件上
+行不通；必须让 UEFI 枚举到一个真实的 FAT32 块设备：
+
+- 插 USB 盘 → `USB Storage`
+- 或把卷写入设备某分区 → `Internal Storage`
+
+### B26.6 一个必须说清的门槛：这份 UEFI 没有 ACPI
+
+之前只扫外层 4 MB FV 就下结论，不可靠（内层卷是 LZMA 压缩的）。写了
+`scripts/check_working_acpi.py` 真正解开内层 FV（6,692,872 字节）再扫描：
+
+```text
+RSD PTR / FACP / APIC / GTDT / DBG2 / PPTT / XSDT   → 全部 NOT FOUND
+AcpiTableDxe / AcpiPlatformDxe / AcpiTables          → 全部 NOT FOUND
+DSDT（仅字符串）/ BGRT / IORT                       → 出现，但不构成 ACPI 表集
+PartitionDxe / DiskIoDxe / Fat                       → 存在 ✓
+```
+
+与源码一致：`caihong.fdf` 里 ACPI 三行全被注释掉，这份固件是给 XNU（走设备树）用的。
+
+**Windows on ARM 依赖 ACPI**：没有 RSDP/XSDT/MADT(APIC)/GTDT，Windows 引导器
+通常无法完成平台初始化。所以即使 `bootaa64.efi` 能被加载，也很可能在早期
+（`winload` / HAL 初始化）停住。
+
+下一步的工程方向应是：**把本项目已有的 ACPI 补丁
+（`0002-silicium-acpi-add-sm8650-caihong-tables.patch`）接回这份可工作的 UEFI**，
+重新启用 `AcpiTableDxe` / `AcpiPlatformDxe` / `AcpiTables.inf`，再测 Windows PE。
+
+### B26.7 安全边界（尚未执行的操作）
+
+**没有向设备写任何分区。** 当前只完成了：ISO 解析、FAT32 卷生成、源码/固件分析、
+镜像下载。
+
+若要测试，有两种方式，都需要用户明确确认：
+
+1. **USB 盘（推荐，零风险）**：把 `BYDJ-PE-arm-fat32.img` 写入一个 ≥1.2 GB 的
+   U 盘，插到平板，UEFI 菜单选 `USB Storage`。不动设备分区。
+2. **写入设备分区**：会覆盖用户数据（全量备份中**没有** userdata 裸分区镜像），
+   风险高，除非用户明确同意并另行备份 userdata。
+
+### B26.8 设备状态（读取时）
+
+adb / fastboot 均未枚举到设备；USB 上没有 900E/9008。设备可能停在 UEFI 菜单、
+或已关机，需要用户确认。
+
+### B26.9 诚实结论
+
+- **UEFI 启动菜单已由用户实测跑通**，本项目最大的阻塞点已解除（在匹配的
+  Android/ABL 版本下）。
+- 已准备好可引导的 ARM PE 介质，但**尚未上机测试**。
+- **仍未启动 Windows**，且已确认当前 UEFI 缺 ACPI——这是下一道明确的门槛。
+- 用户报告的成功方法与镜像来源已记录，但尚未在本地复现（设备当时不在线）。
