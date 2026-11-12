@@ -2304,3 +2304,135 @@ adb / fastboot 均未枚举到设备；USB 上没有 900E/9008。设备可能停
 - 已准备好可引导的 ARM PE 介质，但**尚未上机测试**。
 - **仍未启动 Windows**，且已确认当前 UEFI 缺 ACPI——这是下一道明确的门槛。
 - 用户报告的成功方法与镜像来源已记录，但尚未在本地复现（设备当时不在线）。
+---
+
+## B27. Windows ARM PE 首次上机 + ACPI 接入回归（2026-11-13）
+
+承接 B26：用户已用原版 UEFI 进入 BDS 启动菜单（升级 Android 版本后），并选择
+「继续推进 Windows ARM」。
+
+### B27.1 准备 ARM PE 介质
+
+用户提供的 `E:\1+padpro\BYDJ-PE-v4.0.2.iso`（909.6 MB，
+sha256 `C8CD154649418DF8…`）经挂载验证为标准 Windows ARM64 PE：
+
+```text
+efi\boot\bootaa64.efi  2.5 MB   PE machine = 0xAA64 ✓
+efi\microsoft\boot\bcd
+boot\boot.sdi
+sources\boot.wim       896.55 MB  (< FAT32 4 GB 单文件限制)
+```
+
+UEFI 不能引导 ISO9660，故在 Linux 构建机上用 `7z + mkfs.vfat` 生成 FAT32 卷
+（`scripts/make_pe_fat_remote.sh`）：
+
+```text
+BYDJ-PE-arm-fat32.img   1,258,291,200 B   卷标 CAIHONGPE
+sha256 14443D43ADBDEF98…
+```
+
+用户随后自行把该卷写入了 U 盘（磁盘 3 上出现 `BYDJPE` FAT32 卷，1.13 GB），
+本地经卷 GUID 路径验证 `bootaa64.efi / bcd / boot.wim` 均存在。
+
+### B27.2 U 盘不被识别：查到固件是 USB device 模式
+
+用户实测「插 U 盘设备不能识别」。读配置确认：
+
+```text
+ConfigurationMapLib: {"UsbFnIoRevNum", 0x00010001}
+APRIORI/DXE.inc:     UsbfnDwc3Dxe / UsbMsdDxe / UsbDeviceDxe
+```
+
+`UsbFn` = USB function（device 侧）；这份 UEFI 把平板自身模拟成 U 盘，
+**不是 USB host**。参考工程 HANDOFF 里作者自己也记录了
+`USB boot desired, but no USB devices found on first attempt`。
+
+`MsBootOptionsLibRegisterDefaultBootOptions()` 实际注册的启动项：
+
+```c
+L"Internal Storage" ("SSD")
+L"USB Storage"      ("USB")
+L"FFU Mode"         (hidden)
+L"Mass Storage"     (hidden，来自 QcomPkg PlatformBootOptionsLib)
+```
+
+**没有 Ram Storage** —— 所以把 PE 塞进 boot.img 的 ramdisk 这条路也不通。
+
+### B27.3 按用户授权写 userdata 并测试
+
+用户明确选择「整分区写 userdata（高风险）」，并已被告知 Android 数据会被清掉、
+全量备份中无 userdata 裸镜像。
+
+执行：
+
+```text
+fastboot getvar all → userdata 0x36DF10F000 (224,753 MB)
+                    → max-download-size 805306368 (768 MB)
+fastboot -S 512M flash userdata BYDJ-PE-arm-fat32.img
+   sparse 1/2 524284 KB OKAY / 2/2 405188 KB OKAY
+fastboot flash boot_b Mu-caihong-0.img ; fastboot reboot
+```
+
+菜单选 `Internal Storage` → **黑屏、背光亮**，不进 900E、无 USB 枚举、按键无响应。
+
+### B27.4 接入 ACPI（我们自己的六表）→ 回归
+
+用 `scripts/enable_caihong_acpi.py` 在可工作的 Mu-Silicium 树上：
+
+1. 把 `build/acpi/{APIC,DBG2,DSDT,FACP,GTDT,PPTT}.aml` 放进
+   `Silicium-ACPI/Platforms/OnePlus/caihong/`
+2. 新建 `AcpiTables.inf`（`[Binaries] ASL|*.aml`，参照上游 pong 平台）
+3. 取消 `caihong.fdf` 三行注释：`AcpiTableDxe` / `AcpiPlatformDxe` /
+   `RuleOverride = ACPITABLE caihong/AcpiTables.inf`
+4. 取消 `caihong.dsc` 的 `#caihong/AcpiTables.inf`
+
+构建 RELEASE 成功。用 `scripts/check_working_acpi.py` 解开内层 FV
+（6,717,448 B）验证：
+
+```text
+FACP ✓  APIC ✓  GTDT ✓  DBG2 ✓  PPTT ✓  DSDT ✓      （之前全部 NOT FOUND）
+```
+
+**但上机结果：连 UEFI 菜单都不出现，直接闪一下红屏。**
+
+### B27.5 红屏的真相 + 干净版仍回归
+
+查构建日志发现 `-DCAIHONG_BRINGUP_MARKERS=1` 在 RELEASE 里仍生效 ——
+红屏是 B25 埋在 `DxeMain` 入口的调试探针，**不是 ACPI 崩溃信号**。
+
+于是写了 `scripts/build_acpi_clean.sh`：恢复原始板级包、重打 ACPI、把
+`KeyCallback.c` / `BootManager.c` / `DxeMain.c` 用 `git checkout` 还原，
+去掉所有 marker 与日志 PCD。构建 RELEASE 成功，再次验证六表仍在卷内。
+
+**上机：仍然「背光亮黑屏」，没有菜单。**
+
+刷回原版 `Mu-caihong-0.img` → **菜单恢复正常**。
+
+> 结论：**启用 ACPI 本身引入了回归**，与设备状态无关。基线可随时恢复。
+
+### B27.6 当前状态
+
+```text
+userdata  ← PE 的 FAT32 卷（Android 数据已被覆盖，不可直接回 Android）
+boot_b    ← 已刷回能进菜单的原版 UEFI
+备份      ← E:\caihong-windows\backup\boot_b_stock.img（原厂 boot_b）
+```
+
+另外已构建好 ACPI + DEBUG 版（`Mu-caihong-ACPI-debug.img`，1,400,832 B），
+用于下一步抓具体崩点。
+
+### B27.7 下一步
+
+1. 用 DEBUG 版把日志画到屏幕，定位 ACPI 回归具体崩在哪个模块
+   （最可能是 `AcpiPlatformDxe` 或 ACPI 表包在 DXE 早期）。
+2. 逐个隔离：只留 `AcpiTableDxe` + 表包，不启用 `AcpiPlatformDxe`。
+3. 若 ACPI 一时接不上，也可先保持原版 UEFI + PE 的黑屏状态，用 DEBUG 版
+   查 `Internal Storage` 是否找到 `\EFI\BOOT\BOOTAA64.EFI`。
+
+### B27.8 诚实结论
+
+- **UEFI 启动菜单已可稳定复现**（升级系统版本 + 原版镜像），B26 的结论成立。
+- ARM PE 介质已准备好，并做过一次 `Internal Storage` 实测：**黑屏**。
+- **Windows 仍未启动**。缺 ACPI 是已知门槛；尝试补 ACPI 后出现回归，
+  具体崩点尚未查明。
+- 设备分区状态已被改动（userdata 被 PE 卷覆盖），需要后续恢复。
