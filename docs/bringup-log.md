@@ -2436,3 +2436,76 @@ boot_b    ← 已刷回能进菜单的原版 UEFI
 - **Windows 仍未启动**。缺 ACPI 是已知门槛；尝试补 ACPI 后出现回归，
   具体崩点尚未查明。
 - 设备分区状态已被改动（userdata 被 PE 卷覆盖），需要后续恢复。
+---
+
+## B28. ACPI 接入的三层隔离（2026-11-13 续）
+
+B27 确认：原版 UEFI 能进 BDS 菜单；把我们的六张 ACPI 表接进去后变成
+「背光亮黑屏」。本节用三层构建逐项隔离，并记录一个重要的自我纠错。
+
+### B28.1 构建矩阵（全部基于同一份可工作 Mu-Silicium 树）
+
+| 版本 | `AcpiTableDxe` | `AcpiPlatformDxe` | `AcpiTables.inf`（6 张 AML） | 目标 | 上机结果 |
+| --- | --- | --- | --- | --- | --- |
+| 基线 | ✗ | ✗ | ✗ | RELEASE | **菜单正常** |
+| A：全启用 | ✓ | ✓ | ✓ | RELEASE（干净） | 背光亮黑屏 |
+| B：DEBUG 全启用 | ✓ | ✓ | ✓ | DEBUG | 跑一小会日志 → 黑屏（内容没留住） |
+| C：禁用 `AcpiPlatformDxe` | ✓ | ✗ | ✓ | DEBUG + 仅 ERROR/WARN | 背光亮黑屏 |
+| D：两个 DXE 都禁用 | ✗ | ✗ | ✓ | DEBUG + 仅 ERROR/WARN | 跑一会日志 → 背光亮黑屏 |
+
+> 版本 A 最初出现「闪一下红屏」，后查明是构建里残留
+> `-DCAIHONG_BRINGUP_MARKERS=1`（B25 埋在 `DxeMain` 入口的纯色探针），
+> **不是 ACPI 崩溃信号**。见 `scripts/build_acpi_clean.sh`。
+
+### B28.2 从隔离结果能推出的结论
+
+1. **不是 `AcpiPlatformDxe` 单独导致**：C 版禁用它仍然黑屏。
+2. **不是 `AcpiTableDxe` 单独导致**：D 版连它一起禁用，仍然黑屏。
+3. 于是嫌疑收敛到 **`AcpiTables.inf` 表包本身**（或"把 USER_DEFINED 的 ACPI
+   表包编进 FV"这个动作改变了固件卷布局/大小）。
+
+但这里必须诚实：**C/D 两版都带了 `PcdDebugPrintErrorLevel = 0x80000040`
+（只显示 ERROR/WARN）**，而用户看到"跑了一会码"，说明日志其实在输出，
+只是没留下可辨认的错误文本。所以还不能在源码级确定崩点。
+
+### B28.3 一个更可能被忽略的因素：固件卷尺寸
+
+原版 FD 是 4 MB，内层 FV 是 LZMA 压缩的。加入 6 张 AML 后内层未压缩数据增大，
+但 `TARGET_FD_SIZE` 仍是 `0x400000`。B20 的教训是：**未压缩卷装不下时
+GenFv 会直接报 `required fv image size ... exceeds the set fv image size`**。
+本次构建没有报这个错（压缩后仍放得下），但**运行时解压后的目标缓冲大小是
+由 LZMA 头里的解压后长度决定的**——如果解压目标区只有 4 MB 而数据超过，
+就会踩到相邻内存。
+
+这一点与 B19/B20 里"LZMA 解压目标缓冲"那条线索是同一类问题，
+值得下一步优先验证：把 `TARGET_FD_SIZE` 调大（例如 8 MB，并同步
+`caihong.toml` / 内存映射），看 ACPI 版是否恢复菜单。
+
+### B28.4 另一个需要排除的混淆
+
+B27/B28 的每一次上机都发生在 **userdata 已被 PE 的 FAT32 卷覆盖** 之后。
+虽然基线固件（原版 UEFI）在此状态下仍能进菜单，但不能排除 BDS 在枚举
+`Internal Storage` 时行为改变。为排除干扰，后续对照实验应当把
+`boot_b` 刷回基线后**直接观察菜单、不选择任何启动项**。
+
+### B28.5 当前回滚点
+
+```text
+E:\1+padpro\Mu-caihong-0.img                     能进菜单的基线 UEFI
+E:\1+padpro\Mu-caihong-ACPI-clean.img          干净 ACPI RELEASE（黑屏）
+E:\1+padpro\Mu-caihong-ACPI-debug.img          ACPI DEBUG（黑屏）
+E:\1+padpro\Mu-caihong-ACPI-iso.img            禁用 AcpiPlatformDxe（黑屏）
+E:\1+padpro\Mu-caihong-ACPI-iso2.img           两个 DXE 都禁用（黑屏）
+E:\caihong-windows\backup\boot_b_stock.img     原厂 Android boot_b
+```
+
+新增脚本：`scripts/build_acpi_clean.sh`、`enable_caihong_acpi.py`、
+`build_acpi_isolate.sh`、`build_acpi_isolate2.sh`。
+
+### B28.6 诚实结论
+
+- 三层隔离没有定位到**单个** ACPI 组件，但排除了 `AcpiPlatformDxe` 与
+  `AcpiTableDxe` 各自单独致崩。
+- **表包/固件卷尺寸**是当前最可疑的方向。
+- **Windows 仍未启动**；ACPI 版本每一次都让 BDS 菜单消失。
+- 基线可随时恢复，设备数据（userdata）已被 PE 卷覆盖这一事实未改变。
