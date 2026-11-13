@@ -1,0 +1,26 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = UfsReadTestDxe
+  FILE_GUID                      = 7A31C0DE-4B2F-4C55-9E6A-1F0D2C3B4A51
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = UfsReadTestEntry
+
+[Sources]
+  UfsReadTestDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+  BaseLib
+  MemoryAllocationLib
+
+[Protocols]
+  gEfiBlockIoProtocolGuid
+
+[Depex]
+  gEfiBlockIoProtocolGuid

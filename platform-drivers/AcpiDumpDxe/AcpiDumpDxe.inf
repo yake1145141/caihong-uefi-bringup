@@ -1,0 +1,30 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = AcpiDumpDxe
+  FILE_GUID                      = 8B42D1EF-5C30-4D66-AF7B-2E1D3C4B5A62
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = AcpiDumpEntry
+
+[Sources]
+  AcpiDumpDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+  BaseLib
+  BaseMemoryLib
+
+[Guids]
+  gEfiAcpiTableGuid
+  gEfiAcpi20TableGuid
+
+[Protocols]
+  gEfiSimpleFileSystemProtocolGuid
+
+[Depex]
+  gEfiSimpleFileSystemProtocolGuid

@@ -2887,3 +2887,211 @@ userdata  ← PE FAT32 卷
 ```
 
 本轮未向设备写入任何内容。
+---
+
+## B33. ACPI 真正接上之后：四个实质缺陷与 900E（2026-11-13/14）
+
+### B33.1 起点：ACPI 成功进入启动链
+
+修正存储 GUID 后（见 B33.2），`AcpiPlatformDxe` 真正安装了表，Windows 引导器
+被加载并继续执行。B31 的"加载 bootmgfw.efi"不再是终点，而是新起点。
+
+### B33.2 缺陷一：`PcdAcpiTableStorageFile` GUID 不匹配（已修）
+
+`AcpiPlatformDxe` 用 `PcdGetPtr (PcdAcpiTableStorageFile)` 去 FV 里找表包：
+
+```text
+PcdAcpiTableStorageFile 默认 = 7E374E25-8E01-4FEE-87F2-390C23C606CD
+我们的 AcpiTables.inf 曾写成 ...C606CE   ← 差一个字节
+```
+
+后果：`ReadSection` 永远返回 NOT_FOUND，**六张表一张都没安装**，
+RSDP 里是空的。修法见 `scripts/fix_acpi_guid.py`。
+
+> 教训：`AcpiTables.inf` 的 `FILE_GUID` 必须等于 `PcdAcpiTableStorageFile`。
+
+### B33.3 缺陷二：MADT 的 GICC 结构长度 82 ≠ 规范 80（已修）
+
+设备 DTB 与上游 Kailua 都是 80；我们的是 82（尾部多 2 字节填充 `0b 50`）。
+用 `scripts/fix_madt_gicc.py` 裁剪为 80，表长 744→728，校验和重算。
+同时核对确认正确的项：MPIDR `0x000…0x700`、GICD `0x17100000`、
+GICR `0x17180000`、GIC-ITS `0x17140000`、PMU GSIV 23、VGIC GSIV 25。
+
+### B33.4 缺陷三：PPTT 与 MADT/DSDT 互相矛盾（已移除）
+
+```text
+PPTT 处理器叶节点 procid 0..11  → 12 个 CPU
+MADT 8 个 GICC / DSDT CPU0..CPU7 → 8 个 CPU
+ID 结构 len=30（规范 12）、Cache 结构 len=24（规范 32）
+```
+
+Windows 用 PPTT 建处理器/缓存拓扑，数量与 MADT 矛盾极易早期致命。
+现改为只装 Windows 必需的 **FACP + APIC + GTDT + DSDT**，并丢弃对
+Windows 无用的 DBG2。GTDT 经字段级对比与 edk2-msm 的 sm8250 参考完全一致。
+
+### B33.5 缺陷四：内存映射只暴露 442 MB 可用内存（已修）
+
+`MemoryInitPei` 直接由 `MemoryMapLib.c` 建内存 HOB，而原表：
+
+```text
+Conv (EfiConventionalMemory) 仅 1 条：DXE_Heap 0xB8000000 + 0x1BA00000 = 442 MB
+全表最高只描述到 0xF3800000（1.8 GB），而设备是 8 GB DRAM
+```
+
+设备 DTB 给出决定性布局：
+
+```text
+DRAM        0x80000000 .. 0x2_8000_0000 (8 GB)
+最高保留区  结束于 0xFFE00000（正好 4 GB 边界）
+4 GB 以上   无任何保留区
+4 GB 附近   trust-ui-vm 0xF3800000+0x04400000 / oem-vm 0xF7C00000+0x04C00000
+            ramoops 0xFE5C0000 / llcc-lpi 0xFF800000
+```
+
+`scripts/fix_memory_map_8gb.py` 按上述 DTB 数据补齐：4 GB 附近四个保留区、
+三处空隙、以及 4 GB 以上 6 GB 全为可用。**可用内存 442 MB → 6,649 MB**。
+所有地址均来自 DTB，未编造。
+
+> 对比 `uefi-zorn`（同为 SM8650）的内存映射，与本机原表逐行相同 ——
+> 说明这份表对所有 SM8650 都偏小，Linux 侧不要求大 ramdisk 所以没暴露。
+
+### B33.6 仍然 900E
+
+四项修正后 `Internal Storage` 仍进入 900E。已排除的解释：
+
+| 排除项 | 依据 |
+| --- | --- |
+| `ConvertPages: failed to find range 0x10000000-0x102C5FFF` | 范围大小 `0x2C6000` 恰等于 `bootmgfw.efi` 镜像大小，是"首选加载地址不可用→重定位"的正常打印，无害 |
+| GIC ITS 基址 | `0x17140000`，落在已映射 APSS 区间，合法 |
+| GICC 长度 | 已修为 80 |
+| GTDT 字段 | 与 sm8250 Windows 参考逐字段一致 |
+| 看门狗 | 无 ACPI 时长时间挂住不复位，说明未触发 |
+| 内存不足 | 已从 442 MB 提升到 6.5 GB，行为不变 |
+
+### B33.7 目前的判断
+
+`bootmgfw.efi` 已加载（B31 证据），随后在**无任何 UEFI 输出**的情况下致命
+异常 → 900E。ACPI 的存在把"静默挂住"变成"崩溃"，说明 ACPI 让引导器进入了
+更后面的阶段（ramdisk / winload），而该阶段有另一个致命问题。
+
+缺少 IORT（SMMU 描述）与 DSDT 设备节点极简（仅 CPU）是下一个可疑方向，
+但都需要更多设备数据，不宜凭猜测生成。
+
+### B33.8 下一步（需要运行时证据）
+
+1. **取 900E 崩溃转储**：里面有异常 ESR/FAR，能直接指出崩点。需设备进
+   fastboot 后尝试 `fastboot oem/fetch` 读取 `expdb` / `crashdump` 分区。
+2. 若无法取转储：换一个更小的 Windows ARM 镜像（小 `boot.wim`）验证
+   ramdisk 路径是否就是崩点。
+3. 补 IORT/MCFG：需从 DTB 的 `iommu-map` 推导 stream-id 映射，工作量大。
+
+### B33.9 本轮产物
+
+脚本：`fix_acpi_guid.py`、`fix_madt_gicc.py`、`validate_acpi_tables.py`、
+`validate_pptt.py`、`walk_madt.py`、`compare_giccs.py`、`dump_gicc.py`、
+`dump_madt_its.py`、`diff_tables_vs_upstream.py`、`fix_memory_map_8gb.py`、
+`build_acpi_minimal.sh`、`build_8gb_mem.sh`、`derive_topology_from_dtb.sh`、
+`scan_reserved_regions.py`、`check_dram_size.sh`。
+
+镜像：`E:\1+padpro\Mu-caihong-ACPI-min.img`、`Mu-caihong-8GB.img`、
+`Mu-caihong-MADTfix.img`、`Mu-caihong-ACPI-guidfix.img`。
+---
+
+## B34. 用运行时转储把 ACPI 这条线彻底关闭（2026-11-14）
+
+### B34.1 方法
+
+推理已经用尽，改为**在固件里直接读取 OS 将看到的 ACPI**。新增
+`Platforms/OnePlus/caihongPkg/Drivers/AcpiDumpDxe`（`scripts/build_acpi_dump2.sh`）：
+
+- DEPEX 为 `gEfiSimpleFileSystemProtocolGuid`，保证在 ACPI 全部装完之后执行
+- 从 `gST->ConfigurationTable` 取 `gEfiAcpi20TableGuid`，打印 RSDP/RSDP 长度/XSDT
+- 遍历 XSDT 打印每张表的签名、长度、revision
+- 对 FACP 额外打印 `DSDT`(0x28)、`X_DSDT`(0x8C)、`flags`(0x70)，并校验 DSDT 签名
+- 末尾 `CpuDeadLoop()` 让结果留在屏幕上
+
+### B34.2 实测输出
+
+```text
+[ACPI-DUMP] entries=11
+[ACPI-DUMP] rsdp=0xCF489018 sig=RSD PTR  rev=2
+[ACPI-DUMP] rsdp_len=36 xsdt=0xCF489F18
+[ACPI-DUMP] xsdt sig=XSDT len=60
+[ACPI-DUMP] count=3
+[ACPI-DUMP]  0 FACP len=276 rev=6
+[ACPI-DUMP]    FADT DSDT=0xCF489098 ... flags=0x300000
+[ACPI-DUMP]    DSDT sig=DSDT
+[ACPI-DUMP]  1 APIC len=728 rev=5
+[ACPI-DUMP]  2 GTDT len=156 rev=2
+```
+
+> 注：转储里 `X_DSDT` 打印成 `0xCF48909800000000` 是本驱动读错偏移
+> （写成 0x88，实际应为 **0x8C**）导致的显示问题；`0x8C` 处的值就是
+> `0x00000000CF489098`，与 `DSDT` 一致。
+
+### B34.3 结论：ACPI 链路完整且自洽
+
+```text
+RSDP(rev2) → XSDT → FACP(rev6) + APIC(rev5, 728B) + GTDT(rev2)
+                     FACP.DSDT = FACP.X_DSDT = 0xCF489098 → 签名 "DSDT" ✓
+                     FACP.flags = 0x00300000 (HW_REDUCED_ACPI + LOW_POWER_S0)
+```
+
+**DSDT 不出现在 XSDT 中是 ACPI 规范设计**（DSDT 由 FADT 指针引用），
+不是缺失。因此此前"A/CPI 表没装上"的假设全部排除。
+
+### B34.4 已经用实证关闭的假设清单
+
+| 假设 | 结论 | 证据 |
+| --- | --- | --- |
+| `PcdAcpiTableStorageFile` GUID 不匹配 | 真实 bug，已修 | 差一字节 `...CD` vs `...CE` |
+| GICC 结构长度 82 ≠ 80 | 真实 bug，已修 | 设备 DTB 与上游均为 80 |
+| PPTT 与 MADT/DSDT 矛盾（12 vs 8 CPU） | 真实缺陷，已移除 | PPTT 遍历 |
+| AArch64 只暴露 ACPI 6.0，丢弃 rev<6 的表 | 真实 bug，已修（0x3F） | 编译产物 `_PCD_VALUE…=0x20` |
+| 可用内存仅 442 MB | 真实缺陷，已修（6,649 MB） | 设备 DTB 3.8 GB 保留区之上全空 |
+| UFS 大块读不可靠 | **否定** | `[UFS-TEST]` 256 MB 连续读全通过 |
+| FADT 的 DSDT 指针为 0 | **否定** | 转储显示指针有效且指向 DSDT |
+| `ConvertPages` 报错 | **无害** | 范围大小 `0x2C6000` 恰为 bootmgfw 镜像大小，属重定位 |
+
+### B34.5 900E 仍然存在
+
+在 ACPI 正确、内存 6.5 GB、UFS 正常、`bootmgfw.efi` 已加载的前提下，
+选择 `Internal Storage` 仍进 900E。此时剩下的是**Windows 侧**的问题。
+
+已排除的对照：**完全不装 ACPI 表时不会 900E，只是静默挂住**。说明 ACPI 的
+存在让引导器进入了更靠后的阶段，随后死在该阶段。
+
+### B34.6 剩余的候选原因（未验证）
+
+1. **缺少 `MCFG` / `IORT`**：Windows 在 ARM64 上需要 IORT 来描述 SMMU 与
+   DMA stream-id。若内核早期初始化 SMMU 时拿不到 IORT，可能致命。
+   生成 IORT 需要 DTB 的 `iommu-map`/`iommu-map-mask`，工作量大。
+2. **DSDT 过于简陋**：目前只有 `CPU0..CPU7`（`ACPI0007`）。真实 WoA 平台的
+   DSDT 有 `\_SB.PCI0`、UFS、SDHC、PMIC、热区等。Windows 可能要求
+   `\_SB` 下有 PCI 根桥节点。
+3. **`boot.wim` 的 ramdisk 路径**：需要用更小的 WIM 或损坏的 WIM 做对照，
+   确认崩溃点是否在 ramdisk 建立/`winload` 加载阶段。
+4. **PE 镜像本身**：`BYDJ-PE-v4.0.2` 是为骁龙设备打包的，但仍可能依赖特定
+   SoC 的驱动/表。
+
+### B34.7 建议的下一步顺序
+
+1. 用**损坏/极小的 `boot.wim`** 做对照（重建 FAT32 卷 → 重刷 userdata），
+   以确定崩溃是否发生在 ramdisk 阶段。这一步信息量最大、改动最小。
+2. 若确认在 ramdisk 之前，补 `MCFG` + `IORT`（数据取自 DTB）。
+3. 若确认在 ramdisk 之后，重点转向 `winload`/内核所需的 DSDT 设备节点。
+
+### B34.8 本轮产物
+
+- 驱动：`work/caihongpkg/Drivers/AcpiDumpDxe/`、`Drivers/UfsReadTestDxe/`
+- 脚本：`patch_acpi_dump.py`（已废弃，附加说明）、`clean_msbootpolicy.py`、
+  `build_acpi_dump2.sh`、`build_acpi_verfix.sh`、`build_ufs_test.sh`
+- 镜像：`Mu-caihong-ACPIDUMP2.img`、`Mu-caihong-ACPIVER.img`、
+  `Mu-caihong-UFStest.img`、`Mu-caihong-8GB.img`
+
+### B34.9 教训
+
+- 判断"表是否真的生效"，必须**读运行时的 RSDP/XSDT**，不能只看固件卷里
+  有没有 AML 字符串。本项目的四次误判都源于只看静态内容。
+- `Common/Mu` 在该构建树中**不受 git 管理**，改坏后 `git checkout` 无法还原，
+  必须自己写切除脚本（`clean_msbootpolicy.py`）。
