@@ -2777,3 +2777,113 @@ userdata  ← PE FAT32 卷（Android 数据已被覆盖）
 - **未达成**：Windows PE 桌面、Windows 内核、任何 Windows 驱动。
 - 屏幕最终仍是黑屏/背光亮，但性质已从"固件挂死"变为
   "**Windows 引导器已接管但尚未产出可见输出**"。
+---
+
+## B32. 停在 `bootmgfw.efi` 之后：静态定位（2026-11-13）
+
+B31 已确认 `bootmgfw.efi` 被加载。用户报告设备**停在那段日志处**，不再有输出。
+本节不刷机，只做静态分析。
+
+### B32.1 BCD 内容正确
+
+`bcdedit` 本机因无管理员权限失败，改用 `scripts/dump_bcd_strings.py` 在远端
+解析 BCD（16,384 B，UTF-16 字符串）：
+
+```text
+\boot\boot.sdi
+\sources\boot.wim
+\windows\system32\boot\winload.efi
+Windows Boot Manager
+```
+
+三个文件/路径都在 PE 卷内且已实测存在：
+
+| 文件 | 大小 |
+| --- | --- |
+| `\EFI\BOOT\BOOTAA64.EFI` | 2,622,896 B |
+| `\boot\boot.sdi` | 3,170,304 B |
+| `\sources\boot.wim` | 940,104,794 B |
+
+所以 BCD 不是卡点。加载 `bootmgfw.efi` 之后的标准流程应为：
+
+```text
+读 BCD → 把 boot.sdi + boot.wim 装入 ramdisk → 加载 winload.efi
+```
+
+日志停在这里，最可能是 **ramdisk / 大内存分配阶段**。
+
+### B32.2 `ConvertPages` 报错的确切来源
+
+`MdeModulePkg/Core/Dxe/Mem/Page.c`：
+
+```c
+if ((Link == &gMemoryMap) || (Entry == NULL)) {
+  DEBUG ((DEBUG_ERROR | DEBUG_PAGE,
+          "ConvertPages: failed to find range %lx - %lx\n", Start, End));
+  return EFI_NOT_FOUND;
+}
+```
+
+`CoreConvertPages()` 只在 `HeapGuard.c` 的 `CoreConvertPagesWithGuard()`
+里被调用，返回 `EFI_NOT_FOUND` 表示**请求的物理页范围不在 GCD 内存映射中**。
+
+报错的两段：
+
+```text
+0x10000000 - 0x102C5FFF   (2,908,160 B / 2.77 MB)
+0x102000   - 0x102FFF     (4 KB)
+```
+
+### B32.3 内存映射里的确存在空洞
+
+参考工程 `MemoryMapLib.c` 的基址列表（已排序）：
+
+```text
+TLMM       0x0F000000 + 0x01000000  → 结束于 0x10000000
+（无描述符：0x10000000 – 0x14680000，约 70 MB）
+IMEM_Base  0x14680000
+```
+
+低地址区同样：`IPC_ROUTER_TOP 0x00400000` 到 `SECURITY_CONTROL 0x00780000`
+之间、`0x0A600000`(USB) 与 `0x0B000000`(AOSS) 之间等也有空隙。
+
+`0x10000000` **正好是空洞的起点**，`0x102000` 落在低地址 MMIO 空洞。
+这与报错地址高度吻合。
+
+### B32.4 两种解释（目前无法靠静态分析区分）
+
+| 解释 | 依据 | 处理 |
+| --- | --- | --- |
+| **A：无害噪声** | GCD 对未显式描述的 MMIO 地址返回 NOT_FOUND 属正常；Windows 引导器可能忽略该返回值继续 | 不动内存映射，改用日志确认是否继续到 `winload.efi` |
+| **B：致命失败** | Windows 引导器需要把这些页转成特定属性以建立 ramdisk，失败就停住 | 在内存映射里补上覆盖 `0x10000000-0x10300000` 的描述符（属性需谨慎，不能编造） |
+
+**不能凭猜测改内存映射**——错误的属性会引入更糟的问题，且违反本项目
+"不编造地址/资源"的约束。需要先拿到运行时证据。
+
+### B32.5 一个已排除的假设
+
+`boot.sdi` 是 3,170,304 B，与 2,908,160 B 的失败范围接近但不相等；
+`0x10000000` 是**绝对物理地址**而不是文件长度，所以这两段不是
+"boot.sdi 的大小"。不能按文件大小去解释。
+
+### B32.6 下一步（零风险优先）
+
+1. **放宽日志，抓 `bootmgfw.efi` 之后的最后输出**：把
+   `PcdDebugPrintErrorLevel` 调回包含 `DEBUG_INFO`，但只保留
+   `[Bds]` / `[MSBOOT]` / FAT / ramdisk 相关行，避免刷屏；或在
+   `CoreConvertPages` 失败处加一个"打印后停机"的临时补丁，确认它是不是
+   最后一次 UEFI 调用。
+2. 若确认是 `ConvertPages` 致命，再从**设备自己的 DTB / XBL 区域表**里找
+   `0x10000000` 附近到底是什么，按真实数据补描述符，而不是凭空编造。
+3. 另一条独立线索：检查 GOP/帧缓冲地址 `0xD5100000` 与 Windows 引导器切换
+   显示后的行为（B31.5 第 4 点）。
+
+### B32.7 状态
+
+```text
+boot_b    ← Mu-caihong-MSBOOT-debug.img（加载 bootmgfw.efi 后停住）
+userdata  ← PE FAT32 卷
+设备      ← 停在黑屏，需长按电源 15 秒恢复
+```
+
+本轮未向设备写入任何内容。
