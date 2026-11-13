@@ -3095,3 +3095,77 @@ RSDP(rev2) → XSDT → FACP(rev6) + APIC(rev5, 728B) + GTDT(rev2)
   有没有 AML 字符串。本项目的四次误判都源于只看静态内容。
 - `Common/Mu` 在该构建树中**不受 git 管理**，改坏后 `git checkout` 无法还原，
   必须自己写切除脚本（`clean_msbootpolicy.py`）。
+---
+
+## B35. boot.wim 对照实验：崩溃点在 ramdisk 之后（2026-11-14）
+
+### B35.1 方法
+
+把 `sources/boot.wim` 截断为前 4 MB（WIM 头完整、资源表被切断），重建
+FAT32 卷并写入 userdata（`scripts/make_pe_smallwim.sh`）：
+
+```text
+BYDJ-PE-smallwim.img   134,217,728 B (128 MB)
+sha256 becf59d892cf0fca…
+boot.wim  940,104,794 → 4,194,304 B
+bootaa64.efi 保持 2,622,896 B 不变
+写入 userdata 耗时 3.3 s（131,072 KB）
+```
+
+### B35.2 结果
+
+```text
+截断 WIM  → 选择 Internal Storage → 回到启动菜单（无 900E）
+完整 WIM  → 选择 Internal Storage → 900E
+```
+
+### B35.3 由此确定的事实
+
+`EfiBootManagerBoot` 返回（回到菜单）说明引导器走完了下列步骤并且**正常返回
+错误**，而不是崩溃：
+
+```text
+读 BCD → 打开 \sources\boot.wim → 解析 WIM → 失败 → 返回菜单
+```
+
+因此 900E 只在**完整 WIM**存在时发生，崩溃点位于：
+
+```text
+建 ramdisk（约 1 GB）→ 载入 winload.efi → 启动 winload / 内核早期
+```
+
+### B35.4 已排除项汇总（全部有实证）
+
+| 环节 | 状态 | 证据 |
+| --- | --- | --- |
+| UEFI 启动菜单 | 正常 | 多次复现 |
+| ACPI 表集合 | 正确 | `[ACPI-DUMP]`：FACP+APIC+GTDT+FADT→DSDT |
+| 可用内存 | 6,649 MB | 内存映射补齐后 |
+| UFS 顺序大块读 | 正常 | `[UFS-TEST]` 256 MB 全通过 |
+| BCD / WIM 打开 / 引导器流程 | 正常 | 截断 WIM 时能优雅返回菜单 |
+| FAT32 卷与 `BOOTAA64.EFI` | 正常 | `FSOpen … Success` |
+
+### B35.5 剩余缺口
+
+Windows 侧需要的 ACPI 内容**不止 SoC 级四张表**。真实 WoA 平台的 DSDT 包含
+`\_SB.PCI0`（`PNP0A08` PCI 根桥）、UFS、SDHC、PMIC、热区等设备节点，并配合
+`MCFG`（PCIe ECAM）与 `IORT`（SMMU / DMA stream-id）。本机目前的 DSDT 只有
+`CPU0..CPU7`。
+
+下一步若要继续，应当是：
+
+1. 从设备 DTB 的 `pci@` 节点导出 ECAM 基址 → 生成 `MCFG`
+2. 从 `iommu-map`/`iommu-map-mask` 导出 stream-id 映射 → 生成 `IORT`
+3. 在 DSDT 中补 `\_SB.PCI0` 及其 `_CRS`
+4. 逐项验证，每次只加一张表
+
+这是从"能过引导器"到"能起内核"的必要工作，工作量明显大于此前各项修补。
+
+### B35.6 状态
+
+```text
+boot_b   ← Mu-caihong-ACPIVER.img（菜单正常、ACPI 正确、内存 6.5 GB）
+userdata ← BYDJ-PE-smallwim.img（128 MB 测试卷，非完整 PE）
+回滚     ← E:\1+padpro\Mu-caihong-0.img、backup\boot_b_stock.img
+完整 PE  ← E:\1+padpro\BYDJ-PE-arm-fat32.img（可随时重新写回 userdata）
+```
