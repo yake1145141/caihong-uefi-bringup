@@ -2594,3 +2594,186 @@ userdata  ← PE 的 FAT32 卷
 回滚      ← E:\1+padpro\Mu-caihong-0.img（无 ACPI 基线）
            E:\caihong-windows\backup\boot_b_stock.img（原厂）
 ```
+---
+
+## B30. B29 之后：有 ACPI 的 UEFI 上测 PE，仍黑屏；查清启动项机制（2026-11-13）
+
+### B30.1 实测
+
+B29 的 `Mu-caihong-ACPI-correct.img`（正确驱动集 + 六张 ACPI 表）能进 UEFI
+启动菜单。在该菜单选择 `Internal Storage` 后：
+
+```text
+结果：背光亮黑屏，设备不进 900E、不枚举 USB、按键无响应
+```
+
+与 B27（无 ACPI 基线）选 `Internal Storage` 的现象**相同**。也就是说
+ACPI 补齐没有改变这一段的失败形态，问题在启动项/介质枚举层。
+
+### B30.2 `Internal Storage` 真实行为（读源码确认）
+
+`MsBootOptionsLibRegisterDefaultBootOptions()`：
+
+```c
+RegisterFvBootOption (&gMsBootPolicyFileGuid, L"Internal Storage", ...,
+                      (UINT8 *)"SSD", sizeof ("SSD"));
+RegisterFvBootOption (&gMsBootPolicyFileGuid, L"USB Storage", ...,
+                      (UINT8 *)"USB", sizeof ("USB"));
+```
+
+菜单项启动的是**固件卷里的 `MsBootPolicy.efi`**，不是外部介质上的
+`\EFI\BOOT\BOOTAA64.EFI`。
+
+`Common/Mu/PcBdsPkg/MsBootPolicy/MsBootPolicy.c`：
+
+```c
+case 'S':  // "SDD"
+  BootSequence = mSddBootSequence;   // { MsBootHDD, MsBootDone }
+  break;
+```
+
+而 `mSddBootSequence` 只尝试 `MsBootHDD`。`MsBootPolicy` 通过
+`EfiBootManager` 的已注册 LoadOption + 设备路径过滤器来选设备，
+**不是"扫描任意 FAT 卷并引导 fallback 路径"**。
+
+### B30.3 为什么写入 userdata 的 PE 卷多半不会被找到
+
+B27 用 `fastboot -S 512M flash userdata BYDJ-PE-arm-fat32.img` 写的是一个
+**裸 FAT32 卷**：
+
+- 分区表里 `userdata` 仍是一整块 Android 数据分区，没有 GPT 的
+  EFI System Partition 类型 GUID
+- FAT 卷起始扇区直接落在分区头
+- `PartitionDxe` / `MsBootPolicy` 通常期望「GPT 分区 + ESP 标记」或
+  已注册的 `Boot####` 变量
+
+所以即使卷内 `\EFI\BOOT\BOOTAA64.EFI` 完全正确（已验证 ARM64 PE、
+`BCD`、`boot.wim` 齐备），它也不一定成为 `MsBootHDD` 候选。
+
+### B30.4 由此得出的两个可行方向
+
+| # | 方向 | 说明 |
+| --- | --- | --- |
+| **1** | **让 PE 卷成为标准 ESP** | 在设备 GPT 里建一个真正的 EFI System Partition（FAT32、ESP GUID），把 PE 放进去；或把现有 userdata 分区类型改成 ESP。需要改分区表，风险高 |
+| **2** | **绕过 MsBootPolicy，让 BDS 直接引导 fallback** | 修改 `MsBootOptionsLib` / `MsBootPolicy`，增加一条启动项：直接对所有 SimpleFileSystem 句柄找 `\EFI\BOOT\BOOTAA64.EFI` 并 `LoadImage/StartImage`。改动在 UEFI 源码内，不动分区表 |
+| 3 | 修 USB host | 固件目前是 device 模式（`UsbfnDwc3Dxe`/`UsbMsdDxe`），`USB Storage` 为空；工作量大 |
+
+**推荐方向 2**：不动设备分区，只在固件里加一条"扫描 FAT 卷并引导
+BOOTAA64.EFI"的启动项。这是 Windows PE 的标准 fallback 路径，也最可控。
+
+### B30.5 一个必须保留的诚实提醒
+
+`userdata` 已被 PE 卷覆盖，Android 数据不再可用；全量备份里没有 userdata
+裸镜像。后续若要回 Android，需要重刷/重建该分区。
+
+### B30.6 当前设备状态
+
+```text
+boot_b    ← Mu-caihong-ACPI-correct.img（有 ACPI，菜单正常）
+userdata  ← PE 的 FAT32 卷
+设备      ← 选 Internal Storage 后停在黑屏，需长按电源 15 秒恢复
+回滚      ← E:\1+padpro\Mu-caihong-0.img（无 ACPI 基线）
+           E:\caihong-windows\backup\boot_b_stock.img（原厂）
+```
+
+### B30.7 本轮新增脚本
+
+`scripts/compare_driver_infs.sh`、`restore_reference_drivers.sh`、
+`build_acpi_isolate3.sh` 已加入仓库；B29/B30 记录在本文件。
+---
+
+## B31. Windows ARM 引导器成功加载（2026-11-13）
+
+### B31.1 实验前提（终于正确）
+
+`Mu-caihong-MSBOOT-debug.img`（1,404,928 B）基于：
+
+```text
+✓ 参考仓库原始驱动集（9 个 *.patched.efi，B29 已还原）
+✓ 六张 ACPI 表 + AcpiTableDxe/AcpiPlatformDxe
+✓ DEBUG 构建，控制台只显示 ERROR/WARN
+✓ MsBootPolicy.c 的 7 处枚举日志提升为 DEBUG_ERROR，加 [MSBOOT] 前缀
+```
+
+设备状态：`userdata` 仍是 B27 写入的 PE FAT32 卷。
+
+### B31.2 菜单选 `Internal Storage` 后读到的日志
+
+用户抄录（面板文字有形变/错字，按可辨认部分还原）：
+
+```text
+[Bds]Booting MsTemp.
+FSOpen: Open '\EFI\BOOT\BOOTAA64.EFI' Success
+[Bds] Expand VenHw(...)/HD(14,GPT,...)/\EFI\BOOT\BOOTAA64.EFI
+[Security] 3rd party image[0] can be loaded after EndOfDxe:
+           VenHw(...)/HD(14,GPT,...)/\EFI\BOOT\BOOTAA64.EFI
+InstallProtocolInterface: 5B1B31A1-9562-11D2-8E3F-00A0C969723B
+ConvertPages: failed to find range 10000000 - 102C5FFF
+Loading driver at 0x000CD3DF000 EntryPoint=0x000CD411370  bootmgfw.efi
+InstallProtocolInterface: BC62157E-3E33-4FEC-9920-203B36D750DF
+ProtectUefiImage - 0xCF44D6C0
+  0x00000000CD3DF000 - 0x00000000002C6000
+ConvertPages: failed to find range 102000 - 102FFF
+```
+
+### B31.3 逐条解读
+
+| 行 | 含义 |
+| --- | --- |
+| `FSOpen: ...BOOTAA64.EFI Success` | **PE 卷被 UEFI 的 FAT 驱动成功挂载**，fallback 路径存在 |
+| `HD(14,GPT,...)` | userdata 是 GPT 第 14 个分区；设备路径构造成功 |
+| `[Security] 3rd party image can be loaded after EndOfDxe` | 安全策略允许加载第三方镜像 |
+| `Loading driver ... bootmgfw.efi` | **Windows 引导管理器被 `BOOTAA64.EFI` 加载** |
+| `ProtectUefiImage 0xCD3DF000 - 0x2C6000` | 镜像已按 PE/COFF 装入并应用内存保护 |
+| `ConvertPages: failed to find range ...` | 页转换/内存范围失败；可能无害，也可能是后续卡点 |
+
+**结论：UEFI → FAT32 PE 卷 → `\EFI\BOOT\BOOTAA64.EFI` → `bootmgfw.efi`
+这条链路已经完整走通。** 这是本项目第一次加载 Windows 侧代码。
+
+### B31.4 之前"黑屏"的重新解释
+
+B27/B30 里各次 `Internal Storage` 后的"背光亮黑屏"，现在应重新理解为：
+**UEFI 把显示控制权交给了 Windows 引导器，而引导器没有产生可见输出**
+（或在很早阶段停住），不是固件崩溃。设备不进 900E、USB 不再枚举、
+按键无响应，都与"Windows 引导器接管后挂住"一致。
+
+### B31.5 当前最可能的卡点
+
+按可能性排序：
+
+1. **`bootmgfw.efi` 读 BCD / `boot.wim` 阶段**：BCD 指向 `sources\boot.wim`，
+   若 UEFI 的 FAT/BlockIO 在 `ExitBootServices` 前后行为变化，会卡住。
+2. **`ConvertPages: failed to find range`**：Windows 引导器申请特定内存页失败，
+   可能与 UEFI 内存映射/HOB 有关。
+3. **ACPI 表内容**：六张表虽已装入并由 `AcpiTableDxe` 发布，但
+   `bootmgfw`/`winload` 校验更严格；MADT(APIC)/GTDT/PPTT 若字段与实际
+   SM8650 不符，会在早期停住。
+4. **显示/GOP**：Windows 引导器切到自己的帧缓冲但没点亮。
+
+### B31.6 下一步（建议优先级）
+
+| # | 动作 | 目的 |
+| --- | --- | --- |
+| 1 | **保留当前可加载 `bootmgfw.efi` 的固件，先完整备份镜像与分区状态** | 防止丢失这个已达成状态 |
+| 2 | 构建 DEBUG 版并放宽日志到 `DEBUG_INFO`，同时关掉刷屏，抓 `bootmgfw` 之后的最后几行 | 定位是 BCD / WIM / ACPI 哪一步 |
+| 3 | 用 `bcdedit` 检查 ISO 里的 BCD，确认 `boot.wim` 路径与设备分区匹配 | 排除介质配置问题 |
+| 4 | 若确认是 ACPI 内容，逐表修正 MADT/GTDT（用设备 DTB 数据核对） | Windows HAL 初始化 |
+
+### B31.7 安全与状态
+
+```text
+boot_b    ← Mu-caihong-MSBOOT-debug.img（能加载 Windows 引导器）
+userdata  ← PE FAT32 卷（Android 数据已被覆盖）
+回滚      ← E:\1+padpro\Mu-caihong-0.img（无 ACPI 基线，能进菜单）
+           E:\caihong-windows\backup\boot_b_stock.img（原厂）
+```
+
+本次没有写任何新分区，只刷了 `boot_b`。
+
+### B31.8 诚实结论
+
+- **已达成**：UEFI 菜单 + ACPI + FAT32 PE 卷 + `BOOTAA64.EFI` +
+  `bootmgfw.efi` 加载成功。
+- **未达成**：Windows PE 桌面、Windows 内核、任何 Windows 驱动。
+- 屏幕最终仍是黑屏/背光亮，但性质已从"固件挂死"变为
+  "**Windows 引导器已接管但尚未产出可见输出**"。
