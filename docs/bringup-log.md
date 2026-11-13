@@ -2509,3 +2509,88 @@ E:\caihong-windows\backup\boot_b_stock.img     原厂 Android boot_b
 - **表包/固件卷尺寸**是当前最可疑的方向。
 - **Windows 仍未启动**；ACPI 版本每一次都让 BDS 菜单消失。
 - 基线可随时恢复，设备数据（userdata）已被 PE 卷覆盖这一事实未改变。
+---
+
+## B29. 纠正实验前提：ACPI 接入其实成功了（2026-11-13）
+
+### B29.1 决定性结果
+
+把构建树恢复到**参考仓库原始驱动集**（9 个 `*.patched.efi`）后，重新构建
+「干净基线 + 六张 ACPI 表 + `AcpiTableDxe`/`AcpiPlatformDxe`」的 RELEASE 版：
+
+```text
+Mu-caihong-ACPI-correct.img   1,290,240 B
+sha256 45DA066155F37215…
+内层 FV 6,733,832 B
+FACP / APIC / GTDT / DBG2 / PPTT / DSDT  全部在卷内 ✓
+```
+
+**上机结果：正常进入 UEFI 启动菜单。**
+
+### B29.2 B27/B28 全部 ACPI 黑屏实验的前提错误（结论作废）
+
+B25 为修外部中止时，把构建树里 9 个厂商驱动换成了本机 Android 15 版本，
+并移除了参考仓库的二进制补丁；之后一直未还原。用户手上那份能进菜单的
+镜像（`E:\1+padpro\Mu-caihong-0.img`）用的是参考仓库的 9 个 patched 驱动。
+
+`scripts/compare_driver_infs.sh` 的对比：
+
+```text
+driver          参考仓库(能进菜单)              B27/B28 构建树
+VcsDxe          VcsDxe.patched.efi              VcsDxe.efi
+RscDxe          RscDxe.patched.efi              RscDxe.efi
+UFSDxe          UFSDxe.patched.efi              UFSDxe.efi
+ClockDxe        ClockDxe.patched.efi            ClockDxe.efi
+SPMIDxe         SPMIDxe.patched.efi             SPMIDxe.efi
+PmicDxe         PmicDxeLa.patched.efi           PmicDxeLa.efi
+ButtonsDxe / UsbConfigDxe / UsbMsdDxe          两者一致（patched）
+```
+
+也就是说 B27/B28 的每一版 ACPI 镜像都建立在"驱动集被换掉"的树上，
+与能进菜单的基线**不同源**。那些黑屏以及三层隔离结论全部作废。
+
+### B29.3 修复动作
+
+`scripts/restore_reference_drivers.sh`：从 `uefi-caihong` 重新拷贝 9 个驱动目录，
+恢复 INF 指向 `*.patched.efi`。之后：
+
+1. 用还原后的树构建**不带 ACPI** 的 RELEASE，验证与参考工程产物一致
+   （1,286,144 B，sha256 `EA42FF22EC619887…`）
+2. 在同一棵树上执行 `enable_caihong_acpi.py`，构建带 ACPI 版本
+3. 上机 → **菜单正常**
+
+### B29.4 意义
+
+```text
+✅ 原版 UEFI                     → BDS 菜单（无 ACPI）
+✅ 正确基线 + 六表 + 两个 DXE    → BDS 菜单（有 ACPI）  ← 本轮
+```
+
+**Windows on ARM 所需的 ACPI 前提已经具备，且不影响启动链。**
+这是本项目第一次同时拥有「可工作的 UEFI 菜单」和「ACPI 表集」。
+
+### B29.5 下一步
+
+`userdata` 里仍是 B27 写入的 PE FAT32 卷（`\EFI\BOOT\BOOTAA64.EFI`、
+`BCD`、`boot.wim`）。现在可以在启动菜单选 `Internal Storage`，
+在**有 ACPI** 的固件上重新测 Windows ARM PE 引导。
+
+预期：与 B27 无 ACPI 时的"黑屏"相比，`bootaa64.efi` 应能走得更远；
+若仍失败，用 DEBUG 版（同样基于正确驱动集）抓 BDS/Windows 引导器的日志。
+
+### B29.6 教训（写给后续者）
+
+- **改动构建树后必须记录"当前树 ≠ 基线"**，否则后续所有对照实验都失效。
+  本次浪费了 4 轮刷机才定位到这一点。
+- 判断回归时，第一步应是**对比构建输入**（驱动 INF / 二进制哈希），
+  而不是急着做二分隔离。
+- `scripts/compare_driver_infs.sh` 是为此新增的对照工具。
+
+### B29.7 设备状态
+
+```text
+boot_b    ← Mu-caihong-ACPI-correct.img（带 ACPI，菜单正常）
+userdata  ← PE 的 FAT32 卷
+回滚      ← E:\1+padpro\Mu-caihong-0.img（无 ACPI 基线）
+           E:\caihong-windows\backup\boot_b_stock.img（原厂）
+```
